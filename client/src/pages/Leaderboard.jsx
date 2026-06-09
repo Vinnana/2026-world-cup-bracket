@@ -1,98 +1,126 @@
 import { useState, useEffect } from 'react'
-import { brackets } from '../api'
+import { picks as picksApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 
 export default function Leaderboard() {
-  const [data, setData] = useState([])
-  const [locked, setLocked] = useState(false)
-  const [loading, setLoading] = useState(true)
   const { user } = useAuth()
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
-      const res = await brackets.all()
-      setData(res.data.brackets)
-      setLocked(res.data.settings.locked)
+      const res = await picksApi.leaderboard()
+      setData(res.data)
       setLoading(false)
     }
     load()
-    const interval = setInterval(load, 30000) // refresh every 30s
-    return () => clearInterval(interval)
+    const iv = setInterval(load, 30_000)
+    return () => clearInterval(iv)
   }, [])
 
-  if (loading) return <div className="p-8 text-gray-400">Loading…</div>
+  if (loading) return <div className="p-8 text-gray-400 text-center">Loading…</div>
 
-  const submitted = data.filter(b => b.submitted)
-  const notSubmitted = data.filter(b => !b.submitted)
+  const { leaderboard = [], locked, results_count = 0 } = data || {}
+  const submitted   = leaderboard.filter(e => e.has_picks)
+  const notSubmitted = leaderboard.filter(e => !e.has_picks)
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-white">🏆 Leaderboard</h1>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">🏆 Leaderboard</h1>
+          {results_count > 0 && (
+            <p className="text-xs text-gray-500 mt-1">{results_count} match results in</p>
+          )}
+        </div>
         <div className="flex items-center gap-2 text-sm text-gray-400">
           {locked
-            ? <span className="text-red-400">🔒 Brackets locked</span>
+            ? <span className="text-red-400">🔒 Picks locked</span>
             : <span className="text-green-400">🟢 Picks open</span>
           }
           <span className="text-gray-600">· auto-refreshes</span>
         </div>
       </div>
 
-      <div className="card divide-y divide-gray-800">
+      {/* Rankings */}
+      <div className="card divide-y divide-gray-800 mb-6">
         {submitted.length === 0 && (
-          <p className="text-gray-400 text-sm py-4 text-center">No brackets submitted yet.</p>
+          <p className="text-gray-400 text-sm py-6 text-center">No picks submitted yet.</p>
         )}
-        {submitted.map((b, i) => (
-          <div
-            key={b.user_id}
-            className={`flex items-center justify-between py-3 px-1 ${
-              b.user_id === user?.id ? 'text-fifa-gold' : ''
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-xl w-8 text-center">{MEDALS[i] || `${i + 1}.`}</span>
-              <span className="font-medium">
-                {b.username}
-                {b.user_id === user?.id && <span className="ml-2 text-xs text-gray-500">(you)</span>}
+        {submitted.map((entry, i) => {
+          const isMe = entry.user_id === user?.id
+          return (
+            <div
+              key={entry.user_id}
+              className={`flex items-center justify-between py-3 px-1 ${
+                isMe ? 'text-fifa-gold' : ''
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl w-8 text-center">
+                  {MEDALS[i] || <span className="text-sm text-gray-400">{i + 1}.</span>}
+                </span>
+                <div>
+                  <span className="font-semibold">
+                    {entry.username}
+                    {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+                  </span>
+                  <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
+                </div>
+              </div>
+              <span className="font-black text-xl tabular-nums">
+                {entry.total}
+                <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
               </span>
             </div>
-            <span className="font-bold text-lg tabular-nums">{b.score} pts</span>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
+      {/* Not submitted */}
       {notSubmitted.length > 0 && (
-        <div className="mt-6">
-          <h2 className="text-sm font-medium text-gray-500 mb-2">No picks yet</h2>
+        <div className="mb-6">
+          <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+            No picks yet ({notSubmitted.length})
+          </h2>
           <div className="flex flex-wrap gap-2">
-            {notSubmitted.map(b => (
-              <span key={b.user_id} className="text-xs bg-gray-800 text-gray-400 px-3 py-1 rounded-full">
-                {b.username}
+            {notSubmitted.map(e => (
+              <span key={e.user_id} className="text-xs bg-gray-800 text-gray-400 px-3 py-1 rounded-full">
+                {e.username}
               </span>
             ))}
           </div>
         </div>
       )}
 
-      <div className="mt-6 card text-xs text-gray-500">
-        <p className="font-medium text-gray-400 mb-2">Scoring</p>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-          <span>🥇 Group 1st place</span><span className="text-right">3 pts</span>
-          <span>🥈 Group 2nd place</span><span className="text-right">2 pts</span>
-          <span>🥉 Group 3rd place *</span><span className="text-right">1 pt</span>
-          <span>Round of 32 winner</span><span className="text-right">2 pts</span>
-          <span>Round of 16 winner</span><span className="text-right">3 pts</span>
-          <span>Quarter-final winner</span><span className="text-right">4 pts</span>
-          <span>Semi-final winner</span><span className="text-right">5 pts</span>
-          <span>Champion</span><span className="text-right">8 pts</span>
-          <span>Runner-up</span><span className="text-right">3 pts</span>
+      {/* Scoring legend */}
+      <div className="card text-xs text-gray-500">
+        <p className="font-semibold text-gray-300 mb-3">Scoring system</p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2">
+            <span className="bg-green-700 text-green-100 px-1.5 py-0.5 rounded font-bold">+10</span>
+            <span>Exact score</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="bg-yellow-700 text-yellow-100 px-1.5 py-0.5 rounded font-bold">+6</span>
+            <span>Right winner + goal diff</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="bg-orange-700 text-orange-100 px-1.5 py-0.5 rounded font-bold">+4</span>
+            <span>Right winner / draw</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded font-bold">0</span>
+            <span>Wrong outcome</span>
+          </div>
         </div>
-        <p className="mt-2 text-[11px] text-gray-600">
-          * Only the 8 best 3rd-place teams advance. A correct 3rd-place pick scores
-          only if that team is one of the 8 that qualify — picks in the other 4 groups score 0.
-        </p>
+        <div className="mt-3 border-t border-gray-800 pt-3 space-y-1 text-gray-600">
+          <p><span className="text-gray-400">Example (USA 3–1 Paraguay):</span></p>
+          <p>Predict 3–1 → +10 · Predict 2–0 → +6 · Predict 1–0 → +4 · Predict 0–1 → 0</p>
+        </div>
       </div>
     </div>
   )

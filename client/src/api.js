@@ -43,6 +43,20 @@ export const brackets = {
 /* ---------------- TOURNAMENT ---------------- */
 export const tournament = {
   data: () => api.get('/tournament'),
+}
+
+/* ---------------- SCORE PICKS ---------------- */
+export const picks = {
+  /** User's own picks + annotations */
+  my: () => api.get('/picks/my'),
+  /** Save/update picks. picks = [{ match_id, home_goals, away_goals }] */
+  save: (picksArr) => api.post('/picks', { picks: picksArr }),
+  /** All matches with results map */
+  matches: () => api.get('/picks/matches'),
+  /** Score-based leaderboard */
+  leaderboard: () => api.get('/picks/leaderboard'),
+  /** All users' picks (visible once locked or if admin) */
+  all: () => api.get('/picks/all'),
 };
 
 /* ---------------- ADMIN ---------------- */
@@ -85,6 +99,22 @@ export const admin = {
 
   fetchNow: () =>
     api.post('/admin/fetch-now'),
+
+  /* Score-prediction admin */
+  matchScore: (match_id, home_goals, away_goals, home_team, away_team) =>
+    api.post('/admin/match-score', { match_id, home_goals, away_goals, home_team, away_team }),
+
+  deleteMatchScore: (match_id) =>
+    api.delete(`/admin/match-score/${match_id}`),
+
+  matchScores: () =>
+    api.get('/admin/match-scores'),
+
+  picksLock: (locked, lock_time) =>
+    api.post('/admin/picks-lock', { locked, lock_time }),
+
+  knockoutOpen: (open) =>
+    api.post('/admin/knockout-open', { open }),
 };
 
 export default api;

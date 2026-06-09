@@ -5,8 +5,8 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import Account from './pages/Account'
-import MyBracket from './pages/MyBracket'
-import AllBrackets from './pages/AllBrackets'
+import ScorePicks from './pages/ScorePicks'
+import AllPicks from './pages/AllPicks'
 import Leaderboard from './pages/Leaderboard'
 import FAQ from './pages/FAQ'
 import Admin from './pages/Admin'
@@ -15,7 +15,7 @@ function ProtectedRoute({ children, adminOnly }) {
   const { user, loading } = useAuth()
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
-  if (adminOnly && !user.is_admin) return <Navigate to="/bracket" replace />
+  if (adminOnly && !user.is_admin) return <Navigate to="/picks" replace />
   return children
 }
 
@@ -27,16 +27,18 @@ function AppRoutes() {
     <>
       <Navbar />
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/bracket" /> : <Login />} />
-        <Route path="/register" element={user ? <Navigate to="/bracket" /> : <Register />} />
-        <Route path="/forgot-password" element={user ? <Navigate to="/bracket" /> : <ForgotPassword />} />
-        <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
-        <Route path="/bracket" element={<ProtectedRoute><MyBracket /></ProtectedRoute>} />
-        <Route path="/all" element={<ProtectedRoute><AllBrackets /></ProtectedRoute>} />
-        <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
-        <Route path="/faq" element={<ProtectedRoute><FAQ /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to={user ? '/leaderboard' : '/login'} replace />} />
+        <Route path="/login"          element={user ? <Navigate to="/picks" /> : <Login />} />
+        <Route path="/register"       element={user ? <Navigate to="/picks" /> : <Register />} />
+        <Route path="/forgot-password" element={user ? <Navigate to="/picks" /> : <ForgotPassword />} />
+        <Route path="/account"        element={<ProtectedRoute><Account /></ProtectedRoute>} />
+        <Route path="/picks"          element={<ProtectedRoute><ScorePicks /></ProtectedRoute>} />
+        <Route path="/all"            element={<ProtectedRoute><AllPicks /></ProtectedRoute>} />
+        <Route path="/leaderboard"    element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+        <Route path="/faq"            element={<ProtectedRoute><FAQ /></ProtectedRoute>} />
+        <Route path="/admin"          element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
+        {/* Legacy bracket routes still work */}
+        <Route path="/bracket"        element={<Navigate to="/picks" replace />} />
+        <Route path="*"               element={<Navigate to={user ? '/picks' : '/login'} replace />} />
       </Routes>
     </>
   )

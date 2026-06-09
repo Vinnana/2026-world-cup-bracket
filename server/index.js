@@ -3,6 +3,7 @@ import cors from 'cors'
 import authRoutes from './routes/auth.js'
 import bracketRoutes from './routes/brackets.js'
 import adminRoutes from './routes/admin.js'
+import picksRoutes from './routes/picks.js'
 import db from './database.js'
 import { runResultsSync } from './resultsFetcher.js'
 import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
@@ -17,6 +18,7 @@ app.use(express.json())
 app.use('/api/auth', authRoutes)
 app.use('/api/brackets', bracketRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/picks', picksRoutes)
 
 // Public: tournament data for bracket building
 app.get('/api/tournament', (req, res) => {

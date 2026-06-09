@@ -10,12 +10,17 @@ function defaults() {
     users: [],
     brackets: [],
     match_results: [],
+    score_picks: [],   // { id, user_id, match_id, home_goals, away_goals, created_at, updated_at }
+    match_scores: [],  // { id, match_id, home_team?, away_team?, home_goals, away_goals, played_at, updated_at }
     settings: {
       brackets_locked: 'false',
       lock_time: '',
       tournament_started: 'false',
+      picks_locked: 'false',
+      picks_lock_time: '',
+      knockout_picks_open: 'false',
     },
-    _seq: { users: 0, brackets: 0, match_results: 0 },
+    _seq: { users: 0, brackets: 0, match_results: 0, score_picks: 0, match_scores: 0 },
   }
 }
 
@@ -104,6 +109,78 @@ class DB {
   updateBracketScore(user_id, score) {
     const b = this._data.brackets.find(b => b.user_id === user_id)
     if (b) { b.score = score; this._save() }
+  }
+
+  // ---------- score picks (score-prediction system) ----------
+  upsertScorePick(user_id, match_id, home_goals, away_goals) {
+    if (!this._data.score_picks) this._data.score_picks = []
+    const existing = this._data.score_picks.find(
+      p => p.user_id === user_id && p.match_id === match_id
+    )
+    const now = new Date().toISOString()
+    if (existing) {
+      existing.home_goals = home_goals
+      existing.away_goals = away_goals
+      existing.updated_at = now
+    } else {
+      if (!this._data._seq.score_picks) this._data._seq.score_picks = 0
+      this._data._seq.score_picks += 1
+      this._data.score_picks.push({
+        id: this._data._seq.score_picks,
+        user_id, match_id, home_goals, away_goals,
+        created_at: now, updated_at: now,
+      })
+    }
+    this._save()
+  }
+
+  getScorePicksByUser(user_id) {
+    return (this._data.score_picks || []).filter(p => p.user_id === user_id)
+  }
+
+  getAllScorePicks() {
+    return this._data.score_picks || []
+  }
+
+  // ---------- match scores (admin-entered actual results for scoring system) ----------
+  upsertMatchScore(match_id, { home_team, away_team, home_goals, away_goals }) {
+    if (!this._data.match_scores) this._data.match_scores = []
+    const existing = this._data.match_scores.find(s => s.match_id === match_id)
+    const now = new Date().toISOString()
+    if (existing) {
+      if (home_team   !== undefined) existing.home_team   = home_team
+      if (away_team   !== undefined) existing.away_team   = away_team
+      if (home_goals  !== undefined) existing.home_goals  = home_goals
+      if (away_goals  !== undefined) existing.away_goals  = away_goals
+      existing.updated_at = now
+    } else {
+      if (!this._data._seq.match_scores) this._data._seq.match_scores = 0
+      this._data._seq.match_scores += 1
+      this._data.match_scores.push({
+        id: this._data._seq.match_scores,
+        match_id,
+        home_team: home_team || null,
+        away_team: away_team || null,
+        home_goals: home_goals ?? null,
+        away_goals: away_goals ?? null,
+        played_at: now, updated_at: now,
+      })
+    }
+    this._save()
+  }
+
+  getMatchScore(match_id) {
+    return (this._data.match_scores || []).find(s => s.match_id === match_id) || null
+  }
+
+  getAllMatchScores() {
+    return this._data.match_scores || []
+  }
+
+  deleteMatchScore(match_id) {
+    if (!this._data.match_scores) return
+    this._data.match_scores = this._data.match_scores.filter(s => s.match_id !== match_id)
+    this._save()
   }
 
   // ---------- match results ----------

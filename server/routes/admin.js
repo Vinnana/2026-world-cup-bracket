@@ -98,4 +98,53 @@ router.post('/set-password', requireAdmin, async (req, res) => {
   res.json({ success: true })
 })
 
+// ── Score-prediction system admin endpoints ─────────────────────────────────
+
+// Enter or update a match score (home_goals + away_goals determine the winner).
+// Optional: home_team / away_team override for knockout matches where slots aren't resolved yet.
+router.post('/match-score', requireAdmin, (req, res) => {
+  const { match_id, home_team, away_team, home_goals, away_goals } = req.body
+  if (!match_id) return res.status(400).json({ error: 'match_id required' })
+
+  const hg = home_goals != null ? parseInt(home_goals) : null
+  const ag = away_goals != null ? parseInt(away_goals) : null
+
+  if (hg !== null && (isNaN(hg) || hg < 0)) return res.status(400).json({ error: 'Invalid home_goals' })
+  if (ag !== null && (isNaN(ag) || ag < 0)) return res.status(400).json({ error: 'Invalid away_goals' })
+
+  db.upsertMatchScore(match_id, {
+    home_team: home_team || undefined,
+    away_team: away_team || undefined,
+    home_goals: hg,
+    away_goals: ag,
+  })
+  res.json({ success: true })
+})
+
+// Delete a match score
+router.delete('/match-score/:match_id', requireAdmin, (req, res) => {
+  db.deleteMatchScore(req.params.match_id)
+  res.json({ success: true })
+})
+
+// Get all match scores
+router.get('/match-scores', requireAdmin, (req, res) => {
+  res.json(db.getAllMatchScores())
+})
+
+// Lock / unlock score picks (separate from bracket lock)
+router.post('/picks-lock', requireAdmin, (req, res) => {
+  const { locked, lock_time } = req.body
+  db.setSetting('picks_locked', locked ? 'true' : 'false')
+  if (lock_time !== undefined) db.setSetting('picks_lock_time', lock_time || '')
+  res.json({ success: true, locked })
+})
+
+// Open / close the knockout picks phase (Phase 2)
+router.post('/knockout-open', requireAdmin, (req, res) => {
+  const { open } = req.body
+  db.setSetting('knockout_picks_open', open ? 'true' : 'false')
+  res.json({ success: true, open })
+})
+
 export default router

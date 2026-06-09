@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { admin, tournament, brackets } from '../api'
+import { admin, tournament, brackets, picks as picksApi } from '../api'
 
 export default function Admin() {
   const [settings, setSettings] = useState({})
@@ -85,6 +85,83 @@ export default function Admin() {
     }
   }
 
+  // ── Score picks / match scores state ─────────────────────────────────────
+  const [matchScores,     setMatchScores]     = useState({})  // { match_id: { home_goals, away_goals, home_team, away_team } }
+  const [scoreRound,      setScoreRound]      = useState('group_A')
+  const [scoreForm,       setScoreForm]       = useState({})  // { match_id: { home: '', away: '', ht: '', at: '' } }
+  const [allGroupMatches, setAllGroupMatches] = useState({})  // { A: [...], B: [...] }
+  const [picksLocked,     setPicksLocked]     = useState(false)
+  const [picksLockTime,   setPicksLockTime]   = useState('')
+  const [knockoutOpen,    setKnockoutOpen]    = useState(false)
+
+  async function loadMatchScores() {
+    const res = await admin.matchScores()
+    const map = {}
+    for (const s of res.data) map[s.match_id] = s
+    setMatchScores(map)
+    return map
+  }
+
+  useEffect(() => {
+    async function loadMatchesData() {
+      const t = await tournament.data()
+      // Build group match pairs the same way server does
+      const letters = Object.keys(t.data.groups)
+      const gm = {}
+      letters.forEach((letter, gi) => {
+        const teams = t.data.groups[letter].teams
+        const base = gi * 6 + 1
+        const [t1,t2,t3,t4] = teams
+        gm[letter] = [
+          { id: `m${base}`,   home: t1, away: t2 },
+          { id: `m${base+1}`, home: t3, away: t4 },
+          { id: `m${base+2}`, home: t1, away: t3 },
+          { id: `m${base+3}`, home: t2, away: t4 },
+          { id: `m${base+4}`, home: t1, away: t4 },
+          { id: `m${base+5}`, home: t2, away: t3 },
+        ]
+      })
+      setAllGroupMatches(gm)
+    }
+    loadMatchesData()
+    loadMatchScores()
+  }, [])
+
+  // Sync picks lock settings from main settings load
+  useEffect(() => {
+    if (settings.picks_locked !== undefined) {
+      setPicksLocked(settings.picks_locked === 'true')
+      setPicksLockTime(settings.picks_lock_time || '')
+      setKnockoutOpen(settings.knockout_picks_open === 'true')
+    }
+  }, [settings.picks_locked, settings.picks_lock_time, settings.knockout_picks_open])
+
+  async function handlePicksLock(locked) {
+    await admin.picksLock(locked, picksLockTime)
+    setPicksLocked(locked)
+    flash(locked ? '🔒 Score picks locked' : '🔓 Score picks unlocked')
+  }
+
+  async function handleKnockoutOpen(open) {
+    await admin.knockoutOpen(open)
+    setKnockoutOpen(open)
+    flash(open ? '⚡ Knockout Phase 2 opened!' : '⏸ Knockout picks closed')
+  }
+
+  async function handleSaveMatchScore(matchId, homeGoals, awayGoals, homeTeam, awayTeam) {
+    if (homeGoals === '' || awayGoals === '') return
+    await admin.matchScore(matchId, parseInt(homeGoals), parseInt(awayGoals), homeTeam || undefined, awayTeam || undefined)
+    await loadMatchScores()
+    flash(`✓ Score saved for ${matchId}`)
+  }
+
+  async function handleDeleteMatchScore(matchId) {
+    await admin.deleteMatchScore(matchId)
+    await loadMatchScores()
+    setScoreForm(f => { const n = { ...f }; delete n[matchId]; return n })
+    flash(`✓ Score cleared for ${matchId}`)
+  }
+
   const [fetching, setFetching] = useState(false)
   async function handleToggleAutoFetch(enabled) {
     await admin.setAutoFetch(enabled)
@@ -117,11 +194,13 @@ export default function Admin() {
   const groupLetters = Object.keys(groups).sort()
 
   const tabs = [
-    { key: 'lock', label: '🔒 Lock Brackets' },
-    { key: 'groups', label: '📋 Group Results' },
+    { key: 'scores',   label: '⚽ Match Scores' },
+    { key: 'picks',    label: '🔢 Score Picks Lock' },
+    { key: 'lock',     label: '🔒 Bracket Lock' },
+    { key: 'groups',   label: '📋 Group Results' },
     { key: 'knockout', label: '🏆 Knockout Results' },
-    { key: 'sync', label: '🔄 Results Sync' },
-    { key: 'users', label: '👥 Users' },
+    { key: 'sync',     label: '🔄 Results Sync' },
+    { key: 'users',    label: '👥 Users' },
   ]
 
   return (
@@ -147,6 +226,222 @@ export default function Admin() {
           </button>
         ))}
       </div>
+
+      {/* ── MATCH SCORES tab ────────────────────────────────────────── */}
+      {tab === 'scores' && (() => {
+        const groupLetters = Object.keys(allGroupMatches).sort()
+        const koRounds = [
+          { key: 'R32', label: 'Round of 32', ids: Array.from({length:16}, (_,i) => `m${73+i}`) },
+          { key: 'R16', label: 'Round of 16', ids: Array.from({length:8},  (_,i) => `m${89+i}`) },
+          { key: 'QF',  label: 'Quarter-finals', ids: Array.from({length:4}, (_,i) => `m${97+i}`) },
+          { key: 'SF',  label: 'Semi-finals', ids: ['m101','m102'] },
+          { key: 'Final', label: 'Final', ids: ['m104'] },
+        ]
+        const isGroupRound = scoreRound.startsWith('group_')
+        const currentGroupLetter = isGroupRound ? scoreRound.replace('group_', '') : null
+        const currentKoRound = !isGroupRound ? koRounds.find(r => r.key === scoreRound) : null
+        const currentMatches = isGroupRound
+          ? (allGroupMatches[currentGroupLetter] || [])
+          : (currentKoRound?.ids.map(id => ({ id, home: 'TBD', away: 'TBD' })) || [])
+
+        return (
+          <div className="card">
+            <p className="text-sm text-gray-400 mb-4">
+              Enter actual match scores as each game is played. Points recalculate instantly.
+            </p>
+
+            {/* Round selector */}
+            <div className="mb-4">
+              <label className="block text-sm text-gray-400 mb-1">Round / Group</label>
+              <select className="input" value={scoreRound} onChange={e => setScoreRound(e.target.value)}>
+                <optgroup label="Group Stage">
+                  {groupLetters.map(l => <option key={l} value={`group_${l}`}>Group {l}</option>)}
+                </optgroup>
+                <optgroup label="Knockout">
+                  {koRounds.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Match score rows */}
+            <div className="space-y-2">
+              {currentMatches.map(m => {
+                const saved = matchScores[m.id]
+                const f = scoreForm[m.id] || {}
+                const homeDisp = saved?.home_team || m.home
+                const awayDisp = saved?.away_team || m.away
+
+                return (
+                  <div key={m.id} className={`rounded-lg border p-3 ${saved?.home_goals != null ? 'border-green-800/40 bg-green-900/10' : 'border-gray-700/50 bg-gray-800/40'}`}>
+                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                      <span className="font-mono text-gray-400">{m.id}</span>
+                      {saved?.home_goals != null && (
+                        <span className="text-green-400 font-bold">
+                          {saved.home_goals}–{saved.away_goals}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          Home{!isGroupRound && ' Team'}
+                        </label>
+                        {!isGroupRound ? (
+                          <input
+                            className="input text-sm py-1.5"
+                            placeholder={homeDisp !== 'TBD' ? homeDisp : 'Home team name'}
+                            value={f.ht ?? (saved?.home_team || '')}
+                            onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), ht: e.target.value } }))}
+                          />
+                        ) : (
+                          <div className="input text-sm py-1.5 text-gray-300 bg-gray-800/60 cursor-not-allowed">
+                            {m.home}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">
+                          Away{!isGroupRound && ' Team'}
+                        </label>
+                        {!isGroupRound ? (
+                          <input
+                            className="input text-sm py-1.5"
+                            placeholder={awayDisp !== 'TBD' ? awayDisp : 'Away team name'}
+                            value={f.at ?? (saved?.away_team || '')}
+                            onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), at: e.target.value } }))}
+                          />
+                        ) : (
+                          <div className="input text-sm py-1.5 text-gray-300 bg-gray-800/60 cursor-not-allowed">
+                            {m.away}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="number" min="0" max="30"
+                          className="input w-16 text-center font-bold py-1.5 text-sm"
+                          placeholder="0"
+                          value={f.home ?? (saved?.home_goals ?? '')}
+                          onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), home: e.target.value } }))}
+                        />
+                        <span className="text-gray-500 font-bold">–</span>
+                        <input
+                          type="number" min="0" max="30"
+                          className="input w-16 text-center font-bold py-1.5 text-sm"
+                          placeholder="0"
+                          value={f.away ?? (saved?.away_goals ?? '')}
+                          onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), away: e.target.value } }))}
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleSaveMatchScore(
+                          m.id,
+                          f.home ?? saved?.home_goals ?? '',
+                          f.away ?? saved?.away_goals ?? '',
+                          f.ht ?? saved?.home_team,
+                          f.at ?? saved?.away_team
+                        )}
+                        className="btn-primary text-sm py-1.5 px-3"
+                      >
+                        Save
+                      </button>
+                      {saved?.home_goals != null && (
+                        <button
+                          onClick={() => handleDeleteMatchScore(m.id)}
+                          className="text-xs text-red-400 hover:text-red-300 px-2 py-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── SCORE PICKS LOCK tab ─────────────────────────────────────── */}
+      {tab === 'picks' && (
+        <div className="space-y-4">
+          {/* Phase 1 — Group Stage picks */}
+          <div className="card space-y-3">
+            <h3 className="font-semibold text-white">Phase 1 — Group Stage Picks</h3>
+            <p className="text-sm text-gray-400">
+              Lock picks before the first match kicks off. After locking, players
+              can still see their own picks and the leaderboard — but can't change them.
+            </p>
+            <p className="text-sm">
+              Status:{' '}
+              <span className={picksLocked ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
+                {picksLocked ? '🔒 Locked' : '🔓 Open'}
+              </span>
+            </p>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">Auto-lock at (optional)</label>
+              <input
+                type="datetime-local"
+                className="input"
+                value={picksLockTime}
+                onChange={e => setPicksLockTime(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handlePicksLock(true)}
+                disabled={picksLocked}
+                className="bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Lock Picks
+              </button>
+              <button
+                onClick={() => handlePicksLock(false)}
+                disabled={!picksLocked}
+                className="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Unlock Picks
+              </button>
+            </div>
+          </div>
+
+          {/* Phase 2 — Knockout */}
+          <div className="card space-y-3">
+            <h3 className="font-semibold text-white">Phase 2 — Knockout Picks</h3>
+            <p className="text-sm text-gray-400">
+              Open the knockout phase after the group stage ends. Players get a fresh
+              start and can predict scores for all 32 knockout matches — even if their
+              teams were eliminated.
+            </p>
+            <p className="text-sm">
+              Knockout picks:{' '}
+              <span className={knockoutOpen ? 'text-green-400 font-bold' : 'text-gray-400 font-bold'}>
+                {knockoutOpen ? '⚡ Open' : '⏸ Closed'}
+              </span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleKnockoutOpen(true)}
+                disabled={knockoutOpen}
+                className="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Open Knockout Phase
+              </button>
+              <button
+                onClick={() => handleKnockoutOpen(false)}
+                disabled={!knockoutOpen}
+                className="bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+              >
+                Close Knockout Phase
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab === 'lock' && (
         <div className="card space-y-4">
