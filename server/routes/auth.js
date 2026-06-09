@@ -31,17 +31,6 @@ router.post('/login', async (req, res) => {
   res.json({ token, user: payload })
 })
 
-router.post('/reset-admin-temp', async (req, res) => {
-  const bcrypt = await import('bcryptjs')
-
-  const user = db.getUserByUsername('admin')
-  if (!user) return res.status(404).json({ error: 'not found' })
-
-  const hash = await bcrypt.hash('admin123', 10)
-  db.setPassword(user.id, hash)
-
-  res.json({ success: true, password: 'admin123' })
-})
 
 router.get('/users', (req, res) => {
   res.json(db.getAllUsers().map(u => ({ id: u.id, username: u.username, is_admin: u.is_admin })))
