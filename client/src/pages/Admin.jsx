@@ -7,7 +7,7 @@ export default function Admin() {
   const [users, setUsers] = useState([])
   const [groupResults, setGroupResults] = useState({}) // { A: { first, second, third, third_advanced } }
   const [lockTime, setLockTime] = useState('')
-  const [tab, setTab] = useState('lock')
+  const [tab, setTab] = useState('scores')
   const [msg, setMsg] = useState('')
 
   // Group result form state
@@ -193,13 +193,27 @@ export default function Admin() {
   })()
   const groupLetters = Object.keys(groups).sort()
 
+  // ── Match scores tab helpers (computed once, used in JSX below) ──────────
+  const scoreGroupLetters = Object.keys(allGroupMatches).sort()
+  const scoreKoRounds = [
+    { key: 'R32',   label: 'Round of 32',   ids: Array.from({length:16}, (_,i) => `m${73+i}`) },
+    { key: 'R16',   label: 'Round of 16',   ids: Array.from({length:8},  (_,i) => `m${89+i}`) },
+    { key: 'QF',    label: 'Quarter-finals',ids: Array.from({length:4},  (_,i) => `m${97+i}`) },
+    { key: 'SF',    label: 'Semi-finals',   ids: ['m101','m102'] },
+    { key: 'Final', label: 'Final',         ids: ['m104'] },
+  ]
+  const scoreIsGroup = scoreRound.startsWith('group_')
+  const scoreGroupLetter = scoreIsGroup ? scoreRound.replace('group_', '') : null
+  const scoreKoRound = !scoreIsGroup ? scoreKoRounds.find(r => r.key === scoreRound) : null
+  const scoreMatches = scoreIsGroup
+    ? (allGroupMatches[scoreGroupLetter] || [])
+    : (scoreKoRound ? scoreKoRound.ids.map(id => ({ id, home: 'TBD', away: 'TBD' })) : [])
+
   const tabs = [
     { key: 'scores',   label: '⚽ Match Scores' },
-    { key: 'picks',    label: '🔢 Score Picks Lock' },
-    { key: 'lock',     label: '🔒 Bracket Lock' },
-    { key: 'groups',   label: '📋 Group Results' },
+    { key: 'sync',     label: '🔄 Live Scores API' },
+    { key: 'picks',    label: '🔒 Picks Lock' },
     { key: 'knockout', label: '🏆 Knockout Results' },
-    { key: 'sync',     label: '🔄 Results Sync' },
     { key: 'users',    label: '👥 Users' },
   ]
 
@@ -228,143 +242,136 @@ export default function Admin() {
       </div>
 
       {/* ── MATCH SCORES tab ────────────────────────────────────────── */}
-      {tab === 'scores' && (() => {
-        const groupLetters = Object.keys(allGroupMatches).sort()
-        const koRounds = [
-          { key: 'R32', label: 'Round of 32', ids: Array.from({length:16}, (_,i) => `m${73+i}`) },
-          { key: 'R16', label: 'Round of 16', ids: Array.from({length:8},  (_,i) => `m${89+i}`) },
-          { key: 'QF',  label: 'Quarter-finals', ids: Array.from({length:4}, (_,i) => `m${97+i}`) },
-          { key: 'SF',  label: 'Semi-finals', ids: ['m101','m102'] },
-          { key: 'Final', label: 'Final', ids: ['m104'] },
-        ]
-        const isGroupRound = scoreRound.startsWith('group_')
-        const currentGroupLetter = isGroupRound ? scoreRound.replace('group_', '') : null
-        const currentKoRound = !isGroupRound ? koRounds.find(r => r.key === scoreRound) : null
-        const currentMatches = isGroupRound
-          ? (allGroupMatches[currentGroupLetter] || [])
-          : (currentKoRound?.ids.map(id => ({ id, home: 'TBD', away: 'TBD' })) || [])
+      {tab === 'scores' && (
+        <div className="card">
+          <p className="text-sm text-gray-400 mb-4">
+            Enter actual match scores as each game is played. Points recalculate instantly.
+          </p>
 
-        return (
-          <div className="card">
-            <p className="text-sm text-gray-400 mb-4">
-              Enter actual match scores as each game is played. Points recalculate instantly.
-            </p>
+          {/* Round / group selector */}
+          <div className="mb-4">
+            <label className="block text-sm text-gray-400 mb-1">Round / Group</label>
+            <select className="input" value={scoreRound} onChange={e => setScoreRound(e.target.value)}>
+              <optgroup label="Group Stage">
+                {scoreGroupLetters.map(l => (
+                  <option key={l} value={'group_' + l}>Group {l}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Knockout">
+                {scoreKoRounds.map(r => (
+                  <option key={r.key} value={r.key}>{r.label}</option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
 
-            {/* Round selector */}
-            <div className="mb-4">
-              <label className="block text-sm text-gray-400 mb-1">Round / Group</label>
-              <select className="input" value={scoreRound} onChange={e => setScoreRound(e.target.value)}>
-                <optgroup label="Group Stage">
-                  {groupLetters.map(l => <option key={l} value={`group_${l}`}>Group {l}</option>)}
-                </optgroup>
-                <optgroup label="Knockout">
-                  {koRounds.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-                </optgroup>
-              </select>
-            </div>
+          {/* Match rows */}
+          <div className="space-y-2">
+            {scoreMatches.map(m => {
+              const saved  = matchScores[m.id]
+              const f      = scoreForm[m.id] || {}
+              const homeDisp = saved && saved.home_team ? saved.home_team : m.home
+              const awayDisp = saved && saved.away_team ? saved.away_team : m.away
+              const hasSavedScore = saved && saved.home_goals != null
+              return (
+                <div
+                  key={m.id}
+                  className={
+                    'rounded-lg border p-3 ' +
+                    (hasSavedScore ? 'border-green-800/40 bg-green-900/10' : 'border-gray-700/50 bg-gray-800/40')
+                  }
+                >
+                  <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+                    <span className="font-mono text-gray-400">{m.id}</span>
+                    {hasSavedScore && (
+                      <span className="text-green-400 font-bold">
+                        {saved.home_goals}–{saved.away_goals}
+                      </span>
+                    )}
+                  </div>
 
-            {/* Match score rows */}
-            <div className="space-y-2">
-              {currentMatches.map(m => {
-                const saved = matchScores[m.id]
-                const f = scoreForm[m.id] || {}
-                const homeDisp = saved?.home_team || m.home
-                const awayDisp = saved?.away_team || m.away
-
-                return (
-                  <div key={m.id} className={`rounded-lg border p-3 ${saved?.home_goals != null ? 'border-green-800/40 bg-green-900/10' : 'border-gray-700/50 bg-gray-800/40'}`}>
-                    <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
-                      <span className="font-mono text-gray-400">{m.id}</span>
-                      {saved?.home_goals != null && (
-                        <span className="text-green-400 font-bold">
-                          {saved.home_goals}–{saved.away_goals}
-                        </span>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">
+                        {scoreIsGroup ? 'Home' : 'Home Team'}
+                      </label>
+                      {scoreIsGroup ? (
+                        <div className="input text-sm py-1.5 text-gray-300 bg-gray-800/60 cursor-not-allowed">
+                          {m.home}
+                        </div>
+                      ) : (
+                        <input
+                          className="input text-sm py-1.5"
+                          placeholder={homeDisp !== 'TBD' ? homeDisp : 'Home team name'}
+                          value={f.ht != null ? f.ht : (saved && saved.home_team ? saved.home_team : '')}
+                          onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), ht: e.target.value } }))}
+                        />
                       )}
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">
-                          Home{!isGroupRound && ' Team'}
-                        </label>
-                        {!isGroupRound ? (
-                          <input
-                            className="input text-sm py-1.5"
-                            placeholder={homeDisp !== 'TBD' ? homeDisp : 'Home team name'}
-                            value={f.ht ?? (saved?.home_team || '')}
-                            onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), ht: e.target.value } }))}
-                          />
-                        ) : (
-                          <div className="input text-sm py-1.5 text-gray-300 bg-gray-800/60 cursor-not-allowed">
-                            {m.home}
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">
-                          Away{!isGroupRound && ' Team'}
-                        </label>
-                        {!isGroupRound ? (
-                          <input
-                            className="input text-sm py-1.5"
-                            placeholder={awayDisp !== 'TBD' ? awayDisp : 'Away team name'}
-                            value={f.at ?? (saved?.away_team || '')}
-                            onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), at: e.target.value } }))}
-                          />
-                        ) : (
-                          <div className="input text-sm py-1.5 text-gray-300 bg-gray-800/60 cursor-not-allowed">
-                            {m.away}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2 flex-1">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">
+                        {scoreIsGroup ? 'Away' : 'Away Team'}
+                      </label>
+                      {scoreIsGroup ? (
+                        <div className="input text-sm py-1.5 text-gray-300 bg-gray-800/60 cursor-not-allowed">
+                          {m.away}
+                        </div>
+                      ) : (
                         <input
-                          type="number" min="0" max="30"
-                          className="input w-16 text-center font-bold py-1.5 text-sm"
-                          placeholder="0"
-                          value={f.home ?? (saved?.home_goals ?? '')}
-                          onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), home: e.target.value } }))}
+                          className="input text-sm py-1.5"
+                          placeholder={awayDisp !== 'TBD' ? awayDisp : 'Away team name'}
+                          value={f.at != null ? f.at : (saved && saved.away_team ? saved.away_team : '')}
+                          onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), at: e.target.value } }))}
                         />
-                        <span className="text-gray-500 font-bold">–</span>
-                        <input
-                          type="number" min="0" max="30"
-                          className="input w-16 text-center font-bold py-1.5 text-sm"
-                          placeholder="0"
-                          value={f.away ?? (saved?.away_goals ?? '')}
-                          onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id]||{}), away: e.target.value } }))}
-                        />
-                      </div>
-                      <button
-                        onClick={() => handleSaveMatchScore(
-                          m.id,
-                          f.home ?? saved?.home_goals ?? '',
-                          f.away ?? saved?.away_goals ?? '',
-                          f.ht ?? saved?.home_team,
-                          f.at ?? saved?.away_team
-                        )}
-                        className="btn-primary text-sm py-1.5 px-3"
-                      >
-                        Save
-                      </button>
-                      {saved?.home_goals != null && (
-                        <button
-                          onClick={() => handleDeleteMatchScore(m.id)}
-                          className="text-xs text-red-400 hover:text-red-300 px-2 py-1"
-                        >
-                          ✕
-                        </button>
                       )}
                     </div>
                   </div>
-                )
-              })}
-            </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="number" min="0" max="30"
+                        className="input w-16 text-center font-bold py-1.5 text-sm"
+                        placeholder="0"
+                        value={f.home != null ? f.home : (saved && saved.home_goals != null ? saved.home_goals : '')}
+                        onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), home: e.target.value } }))}
+                      />
+                      <span className="text-gray-500 font-bold">–</span>
+                      <input
+                        type="number" min="0" max="30"
+                        className="input w-16 text-center font-bold py-1.5 text-sm"
+                        placeholder="0"
+                        value={f.away != null ? f.away : (saved && saved.away_goals != null ? saved.away_goals : '')}
+                        onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), away: e.target.value } }))}
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleSaveMatchScore(
+                        m.id,
+                        f.home != null ? f.home : (saved ? saved.home_goals : ''),
+                        f.away != null ? f.away : (saved ? saved.away_goals : ''),
+                        f.ht != null ? f.ht : (saved ? saved.home_team : null),
+                        f.at != null ? f.at : (saved ? saved.away_team : null)
+                      )}
+                      className="btn-primary text-sm py-1.5 px-3"
+                    >
+                      Save
+                    </button>
+                    {hasSavedScore && (
+                      <button
+                        onClick={() => handleDeleteMatchScore(m.id)}
+                        className="text-xs text-red-400 hover:text-red-300 px-2 py-1"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
-        )
-      })()}
+        </div>
+      )}
 
       {/* ── SCORE PICKS LOCK tab ─────────────────────────────────────── */}
       {tab === 'picks' && (
@@ -443,119 +450,6 @@ export default function Admin() {
         </div>
       )}
 
-      {tab === 'lock' && (
-        <div className="card space-y-4">
-          <div>
-            <p className="text-sm text-gray-400 mb-2">
-              Status: <span className={isLocked ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
-                {isLocked ? '🔒 Locked' : '🔓 Open'}
-              </span>
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Lock Date/Time (auto-locks at this time)</label>
-            <input
-              type="datetime-local"
-              className="input"
-              value={lockTime}
-              onChange={e => setLockTime(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleLock(true)}
-              className="bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg"
-              disabled={isLocked}
-            >
-              Lock Brackets
-            </button>
-            <button
-              onClick={() => handleLock(false)}
-              className="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg"
-              disabled={!isLocked}
-            >
-              Unlock Brackets
-            </button>
-          </div>
-          <p className="text-xs text-gray-500">
-            Lock before the first match starts (June 12, 2026). While locked, players can't change
-            picks. <span className="text-gray-400">Players also can't see each other's brackets until lock</span> —
-            setting a lock date/time above will reveal everyone's picks automatically once it passes.
-          </p>
-        </div>
-      )}
-
-      {tab === 'groups' && (
-        <div className="card">
-          <p className="text-sm text-gray-400 mb-1">
-            Enter final group stage standings after each group is complete.
-          </p>
-          <p className="text-xs text-gray-500 mb-4">
-            Only the 8 best 3rd-place teams advance. Tick “3rd-place team advanced” for those 8 groups —
-            a player’s correct 3rd-place pick only scores when that group is marked advanced.
-            <span className={`ml-1 font-semibold ${advancedCount > 8 ? 'text-red-400' : advancedCount === 8 ? 'text-fifa-gold' : 'text-gray-300'}`}>
-              ({advancedCount}/8 marked)
-            </span>
-          </p>
-          <form onSubmit={handleGroupResult} className="space-y-4">
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Group</label>
-              <select
-                className="input"
-                value={groupForm.group}
-                onChange={e => {
-                  const g = e.target.value
-                  const existing = groupResults[g] || {}
-                  setGroupForm({
-                    group: g,
-                    first: existing.first || '',
-                    second: existing.second || '',
-                    third: existing.third || '',
-                    third_advanced: !!existing.third_advanced,
-                  })
-                }}
-              >
-                {groupLetters.map(g => (
-                  <option key={g} value={g}>
-                    Group {g}{groupResults[g]?.third_advanced ? ' ✓3rd' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {['first', 'second', 'third'].map((pos, i) => (
-              <div key={pos}>
-                <label className="block text-sm text-gray-400 mb-1">
-                  {i === 0 ? '🥇 1st Place' : i === 1 ? '🥈 2nd Place' : '🥉 3rd Place'}
-                </label>
-                <select
-                  className="input"
-                  value={groupForm[pos]}
-                  onChange={e => setGroupForm(f => ({ ...f, [pos]: e.target.value }))}
-                >
-                  <option value="">— select —</option>
-                  {(groups[groupForm.group]?.teams || []).map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                className="w-4 h-4 accent-fifa-gold"
-                checked={groupForm.third_advanced}
-                onChange={e => setGroupForm(f => ({ ...f, third_advanced: e.target.checked }))}
-              />
-              3rd-place team advanced to the knockouts (one of the 8 best)
-              {!groupForm.third_advanced && advancedCount >= 8 && (
-                <span className="text-xs text-gray-500">— 8 already marked</span>
-              )}
-            </label>
-            <button type="submit" className="btn-primary">Save Group {groupForm.group} Result</button>
-          </form>
-        </div>
-      )}
-
       {tab === 'knockout' && (
         <div className="card">
           <p className="text-sm text-gray-400 mb-4">
@@ -627,68 +521,193 @@ export default function Admin() {
       )}
 
       {tab === 'sync' && (
-        <div className="card space-y-4">
-          <p className="text-sm text-gray-400">
-            Automatically pull results from <span className="text-gray-300">football-data.org</span>.
-            Group standings fill the 1st/2nd/3rd places (and auto-mark the 8 best 3rd-place teams);
-            knockout games are matched to the bracket by the teams involved. You can always override
-            anything by hand on the Group/Knockout tabs.
-          </p>
+        <div className="space-y-4">
 
-          {!apiConfigured ? (
-            <div className="bg-yellow-900/30 border border-yellow-700/50 text-yellow-200 text-sm rounded-lg p-3">
-              ⚠️ No API key configured. Set <code className="text-yellow-100">FOOTBALL_DATA_TOKEN</code> in
-              the server environment and restart to enable auto-fetch. Until then, enter results manually.
-            </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div className="text-sm">
-                <span className="text-gray-400">Scheduled auto-fetch: </span>
-                <span className={autoFetchOn ? 'text-green-400 font-bold' : 'text-gray-300 font-bold'}>
-                  {autoFetchOn ? '🔄 On' : '⏸ Off'}
-                </span>
+          {/* API status card */}
+          <div className={`card border-l-4 ${apiConfigured ? 'border-green-500' : 'border-yellow-500'}`}>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-sm font-bold ${apiConfigured ? 'text-green-400' : 'text-yellow-400'}`}>
+                    {apiConfigured ? '🟢 API Connected' : '🟡 API Not Configured'}
+                  </span>
+                  <span className="text-xs text-gray-500 bg-gray-700 px-2 py-0.5 rounded-full">
+                    {settings.results_provider || 'football-data.org'}
+                  </span>
+                </div>
+                {apiConfigured ? (
+                  <p className="text-xs text-gray-400">
+                    Live match scores will be fetched automatically and update player points in real time.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    Add your API key to Render environment variables to enable live score syncing.
+                  </p>
+                )}
               </div>
-              <button
-                onClick={() => handleToggleAutoFetch(!autoFetchOn)}
-                className={autoFetchOn
-                  ? 'bg-gray-700 hover:bg-gray-600 text-white font-medium px-4 py-2 rounded-lg'
-                  : 'btn-primary'}
-              >
-                {autoFetchOn ? 'Pause auto-fetch' : 'Enable auto-fetch'}
-              </button>
-            </div>
-          )}
-
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
-            <button onClick={handleFetchNow} disabled={!apiConfigured || fetching} className="btn-primary">
-              {fetching ? 'Fetching…' : 'Fetch results now'}
-            </button>
-            {settings.last_fetch_at && (
-              <span className="text-xs text-gray-500">
-                Last sync: {new Date(settings.last_fetch_at).toLocaleString()}
-              </span>
-            )}
-          </div>
-
-          {lastStatus && (
-            <div className="text-xs rounded-lg p-3 bg-gray-800/60 border border-gray-700">
-              {lastStatus.error ? (
-                <span className="text-red-400">Last sync error: {lastStatus.error}</span>
-              ) : (
-                <div className="space-y-1 text-gray-300">
-                  <div>Groups finalized: <span className="text-white">{lastStatus.groups?.join(', ') || '—'}</span></div>
-                  <div>Knockout matches set: <span className="text-white">{lastStatus.knockout?.length || 0}</span></div>
-                  {lastStatus.thirdsRanked && (
-                    <div>3rd-place teams advancing (groups): <span className="text-fifa-gold">{lastStatus.thirdsRanked.join(', ')}</span></div>
-                  )}
-                  {lastStatus.unmatched?.length > 0 && (
-                    <div className="text-yellow-300">
-                      Needs manual entry: {lastStatus.unmatched.join(', ')}
-                    </div>
-                  )}
+              {apiConfigured && (
+                <div className="text-center">
+                  <p className="text-xs text-gray-500 mb-1">Auto-sync</p>
+                  <span className={`text-sm font-bold ${autoFetchOn ? 'text-green-400' : 'text-gray-400'}`}>
+                    {autoFetchOn ? '🔄 On' : '⏸ Off'}
+                  </span>
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Setup guide — shown when not configured */}
+          {!apiConfigured && (
+            <div className="card space-y-4">
+              <h3 className="font-bold text-white">How to connect football-data.org (free, recommended)</h3>
+
+              <ol className="space-y-3 text-sm text-gray-300">
+                <li className="flex gap-3">
+                  <span className="bg-fifa-gold text-gray-950 font-black text-xs w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+                  <div>
+                    Go to{' '}
+                    <a href="https://www.football-data.org/client/register" target="_blank" rel="noreferrer"
+                       className="text-fifa-gold hover:underline font-medium">
+                      football-data.org/client/register
+                    </a>
+                    {' '}— sign up for free, no credit card. You'll get an API key by email instantly.
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="bg-fifa-gold text-gray-950 font-black text-xs w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+                  <div>
+                    In your <span className="text-white font-medium">Render dashboard</span> → your server service →
+                    {' '}<span className="text-white font-medium">Environment</span> → add a new variable:
+                    <div className="mt-1.5 font-mono text-xs bg-gray-800 rounded px-3 py-2 border border-gray-700">
+                      <span className="text-fifa-gold">FOOTBALL_DATA_TOKEN</span>
+                      <span className="text-gray-500"> = </span>
+                      <span className="text-green-400">your_api_key_here</span>
+                    </div>
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="bg-fifa-gold text-gray-950 font-black text-xs w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+                  <div>
+                    Click <span className="text-white font-medium">Save Changes</span> in Render — the server restarts
+                    automatically (≈ 1 min). Come back here and this page will show{' '}
+                    <span className="text-green-400 font-medium">🟢 API Connected</span>.
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <span className="bg-fifa-gold text-gray-950 font-black text-xs w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">4</span>
+                  <div>
+                    Enable <span className="text-white font-medium">Auto-sync</span> below and set the interval.
+                    Scores will update within minutes of each match finishing.
+                  </div>
+                </li>
+              </ol>
+
+              <div className="bg-gray-800/60 rounded-lg p-3 text-xs text-gray-400 border border-gray-700">
+                <p className="font-semibold text-gray-300 mb-1">Why football-data.org?</p>
+                <ul className="space-y-0.5 list-disc list-inside">
+                  <li>Free tier — 10 requests/min, no credit card</li>
+                  <li>Official FIFA World Cup 2026 data (competition code: WC)</li>
+                  <li>Returns goals scored, match status, group standings</li>
+                  <li>Running since 2014 — very reliable</li>
+                  <li>Backup option: API-Football (set <code className="text-gray-300">API_FOOTBALL_KEY</code> + <code className="text-gray-300">RESULTS_PROVIDER=api-football</code>)</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Auto-sync controls — shown when configured */}
+          {apiConfigured && (
+            <div className="card space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">Scheduled auto-sync</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Polls the API every {settings.fetch_interval_min || 15} min. Scores update within minutes of a match ending.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleToggleAutoFetch(!autoFetchOn)}
+                  className={autoFetchOn
+                    ? 'bg-gray-700 hover:bg-gray-600 text-white font-bold px-4 py-2 rounded-lg'
+                    : 'btn-primary px-4 py-2'}
+                >
+                  {autoFetchOn ? '⏸ Pause' : '▶ Enable auto-sync'}
+                </button>
+              </div>
+              {autoFetchOn && (
+                <div className="flex items-center gap-2 text-xs text-green-400 bg-green-900/20 rounded-lg px-3 py-2">
+                  <span>🔄</span>
+                  <span>Auto-syncing every {settings.fetch_interval_min || 15} minutes — scores will update live during the tournament</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Manual sync */}
+          <div className="card">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-sm font-semibold text-white">Manual sync</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Run a sync right now — useful after a match finishes or to verify the connection.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleFetchNow}
+                  disabled={!apiConfigured || fetching}
+                  className="btn-primary disabled:opacity-50"
+                >
+                  {fetching ? '⏳ Syncing…' : '🔄 Sync now'}
+                </button>
+              </div>
+            </div>
+
+            {settings.last_fetch_at && (
+              <p className="text-xs text-gray-500 mt-3">
+                Last sync: <span className="text-gray-300">{new Date(settings.last_fetch_at).toLocaleString()}</span>
+              </p>
+            )}
+
+            {/* Last sync result */}
+            {lastStatus && (
+              <div className="mt-3 text-xs rounded-lg p-3 bg-gray-800/60 border border-gray-700 space-y-1.5">
+                {lastStatus.error ? (
+                  <p className="text-red-400 font-medium">⚠ {lastStatus.error}</p>
+                ) : (
+                  <>
+                    <p className="text-gray-400 font-semibold mb-1">Last sync results</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400 font-bold">{lastStatus.scores?.length || 0}</span>
+                      <span className="text-gray-300">match scores updated</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-400 font-bold">{lastStatus.groups?.length || 0}</span>
+                      <span className="text-gray-300">group standings updated</span>
+                      {lastStatus.groups?.length > 0 && (
+                        <span className="text-gray-500">({lastStatus.groups.join(', ')})</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-400 font-bold">{lastStatus.knockout?.length || 0}</span>
+                      <span className="text-gray-300">knockout results updated</span>
+                    </div>
+                    {lastStatus.unmatched?.length > 0 && (
+                      <div className="pt-1 border-t border-gray-700">
+                        <p className="text-yellow-400 font-medium">⚠ Needs manual score entry:</p>
+                        <p className="text-yellow-300/80 mt-0.5">{lastStatus.unmatched.join(' · ')}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {!apiConfigured && (
+            <p className="text-xs text-gray-600 text-center">
+              While the API key is not set you can still enter scores manually in the ⚽ Match Scores tab.
+            </p>
           )}
         </div>
       )}
