@@ -1,0 +1,57 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "suyesh",
+      "password_hash": "$2a$10$8ir9wT8eT.wiLCgYHAxjp.R7.1hIOJ6vy4U0lm.GlDIafqtKkVRsK",
+      "is_admin": 1,
+      "created_at": "2026-06-08T23:56:28.391Z",
+      "reset_requested": false
+    },
+    {
+      "id": 7,
+      "username": "sk",
+      "password_hash": "$2a$10$90scXJXceza7iMh5kA38uOymPYMvvSA5PU3Z2.8SHdDvmCnDD.xJO",
+      "is_admin": 0,
+      "created_at": "2026-06-09T01:44:31.845Z"
+    }
+  ],
+  "brackets": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "picks": "{\"groups\":{},\"knockout\":{}}",
+      "score": 0,
+      "submitted_at": "2026-06-09T00:27:51.844Z",
+      "updated_at": "2026-06-09T01:23:45.999Z"
+    },
+    {
+      "id": 6,
+      "user_id": 3,
+      "picks": "{\"groups\":{},\"knockout\":{}}",
+      "score": 0,
+      "submitted_at": "2026-06-09T01:43:00.963Z",
+      "updated_at": "2026-06-09T01:43:00.963Z"
+    },
+    {
+      "id": 7,
+      "user_id": 7,
+      "picks": "{\"groups\":{\"A\":{\"first\":\"South Africa\",\"second\":\"Mexico\",\"third\":\"Korea Republic\"},\"D\":{\"first\":\"United States\",\"second\":\"Paraguay\",\"third\":\"Australia\"},\"B\":{\"first\":\"Canada\",\"second\":\"Bosnia and Herzegovina\",\"third\":\"Qatar\"},\"C\":{\"first\":\"Brazil\",\"second\":\"Morocco\",\"third\":\"Haiti\"},\"E\":{\"first\":\"Germany\",\"second\":\"Curaçao\",\"third\":\"Ivory Coast\"},\"F\":{\"first\":\"Netherlands\",\"second\":\"Japan\",\"third\":\"Sweden\"},\"G\":{\"first\":\"Belgium\",\"second\":\"Egypt\",\"third\":\"Iran\"},\"J\":{\"first\":\"Argentina\",\"second\":\"Algeria\",\"third\":\"Austria\"},\"K\":{\"first\":\"DR Congo\",\"second\":\"Portugal\",\"third\":\"Uzbekistan\"},\"L\":{\"first\":\"England\",\"second\":\"Croatia\",\"third\":\"Ghana\"},\"I\":{\"third\":\"France\",\"second\":\"Senegal\",\"first\":\"Iraq\"},\"H\":{\"first\":\"Cape Verde\",\"second\":\"Spain\",\"third\":\"Uruguay\"}},\"knockout\":{\"m73\":\"Mexico\",\"m74\":\"Germany\",\"m75\":\"Netherlands\",\"m76\":\"Brazil\",\"m77\":\"Iraq\",\"m78\":\"Curaçao\",\"m79\":\"South Africa\",\"m80\":\"England\",\"m81\":\"United States\",\"m82\":\"Belgium\",\"m83\":\"Portugal\",\"m84\":\"Cape Verde\",\"m85\":\"Canada\",\"m86\":\"Argentina\",\"m87\":\"DR Congo\",\"m88\":\"Paraguay\",\"m96\":\"Canada\",\"m95\":\"Paraguay\",\"m94\":\"Belgium\",\"m93\":\"Portugal\",\"m92\":\"England\",\"m91\":\"Curaçao\",\"m98\":\"Belgium\",\"m99\":\"Curaçao\",\"m100\":\"Paraguay\",\"m102\":\"Curaçao\",\"m101\":\"Mexico\",\"m89\":\"Germany\",\"m90\":\"Mexico\",\"m97\":\"Mexico\",\"m104\":\"Mexico\"}}",
+      "score": 0,
+      "submitted_at": "2026-06-09T01:45:50.383Z",
+      "updated_at": "2026-06-09T01:47:07.791Z"
+    }
+  ],
+  "match_results": [],
+  "settings": {
+    "brackets_locked": "false",
+    "lock_time": "",
+    "tournament_started": "false",
+    "last_fetch_status": "{\"error\":\"FOOTBALL_DATA_TOKEN is not set — cannot auto-fetch results.\",\"at\":\"2026-06-09T01:11:44.616Z\"}"
+  },
+  "_seq": {
+    "users": 7,
+    "brackets": 7,
+    "match_results": 9
+  }
+}
