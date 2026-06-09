@@ -1,8 +1,17 @@
-import axios from 'axios'
+import axios from 'axios';
+
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  'https://two026-world-cup-bracket.onrender.com';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL
+  baseURL: `${API_BASE}/api`
 });
+
+export const auth = api;
+export const brackets = api;
+export const tournament = api;
+export const admin = api;
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('wc2026_token')
