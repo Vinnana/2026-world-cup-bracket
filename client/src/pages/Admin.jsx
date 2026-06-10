@@ -42,7 +42,10 @@ const N = s => s.toLowerCase().replace(/[\s._\-]/g, '')
 // Manual overrides for usernames that can't be auto-matched by name
 // Key: normalized username  →  Value: roster name (exact string from ROSTER)
 const MANUAL_OVERRIDES = {
-  sk: 'Suyesh',
+  sk:          'Suyesh',
+  stk:         'Munkii',
+  pdai:        'Prashant Upadhyay',
+  prajwol123:  'Prajwol Bhandari',
 }
 
 function buildRosterMatches(roster, appUsers, leaderboard) {
