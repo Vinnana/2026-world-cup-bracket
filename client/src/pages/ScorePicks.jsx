@@ -328,6 +328,8 @@ export default function ScorePicks() {
   const [loading,       setLoading]       = useState(true)
   const [tab,           setTab]           = useState('group')
   const [statusMsg,     setStatusMsg]     = useState('')
+  const [confirmClear,  setConfirmClear]  = useState(false)
+  const [clearing,      setClearing]      = useState(false)
 
   // Load matches + my picks
   async function load() {
@@ -358,6 +360,23 @@ export default function ScorePicks() {
     const iv = setInterval(load, 30_000)
     return () => clearInterval(iv)
   }, [])
+
+  // Clear all picks
+  async function handleClearAll() {
+    setClearing(true)
+    try {
+      await picksApi.clearMine()
+      setMyPicks({})
+      setConfirmClear(false)
+      setStatusMsg('✓ All picks cleared')
+      setTimeout(() => setStatusMsg(''), 2500)
+    } catch {
+      setStatusMsg('⚠ Could not clear picks')
+      setTimeout(() => setStatusMsg(''), 2500)
+    } finally {
+      setClearing(false)
+    }
+  }
 
   // Auto-save single pick on blur
   const handleSave = useCallback(async (match_id, home_goals, away_goals) => {
@@ -440,6 +459,34 @@ export default function ScorePicks() {
             <span>{pickedCount} picks</span>
             {resultsIn > 0 && <span>· {resultsIn} results in</span>}
           </div>
+          {/* Clear all picks — only when open and at least one pick exists */}
+          {!locked && pickedCount > 0 && (
+            confirmClear ? (
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="text-xs text-red-400">Clear all {pickedCount} picks?</span>
+                <button
+                  onClick={handleClearAll}
+                  disabled={clearing}
+                  className="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-0.5 rounded font-medium"
+                >
+                  {clearing ? '…' : 'Yes, clear'}
+                </button>
+                <button
+                  onClick={() => setConfirmClear(false)}
+                  className="text-xs text-gray-400 hover:text-white px-1"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmClear(true)}
+                className="text-xs text-red-400 hover:text-red-300 mt-1 underline underline-offset-2"
+              >
+                Clear all picks
+              </button>
+            )
+          )}
         </div>
       </div>
 

@@ -38,6 +38,15 @@ router.get('/my', requireAuth, (req, res) => {
   })
 })
 
+// ── DELETE /api/picks/my ─────────────────────────────────────────────────────
+// Clear all picks for the current user (only while picks are open)
+router.delete('/my', requireAuth, (req, res) => {
+  if (isPicksLocked()) return res.status(403).json({ error: 'Picks are locked' })
+  const before = db.getScorePicksByUser(req.user.id).length
+  db.deletePicksByUser(req.user.id)
+  res.json({ success: true, cleared: before })
+})
+
 // ── POST /api/picks ──────────────────────────────────────────────────────────
 // Batch upsert score picks. Body: { picks: [{ match_id, home_goals, away_goals }] }
 router.post('/', requireAuth, (req, res) => {

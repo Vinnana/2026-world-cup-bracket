@@ -77,6 +77,8 @@ export const picks = {
   leaderboard: () => api.get('/picks/leaderboard'),
   /** All users' picks (visible once locked or if admin) */
   all: () => api.get('/picks/all'),
+  /** Clear the current user's own picks (only while picks are open) */
+  clearMine: () => api.delete('/picks/my'),
 };
 
 /* ---------------- ADMIN ---------------- */
