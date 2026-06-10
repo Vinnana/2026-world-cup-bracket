@@ -15,7 +15,7 @@ const ROSTER = [
   'Deepa Rajkarnikar',
   'Jyoti Lohani',
   'Kalyan',
-  'Munkii',
+  'Sirish',
   'Nanda',
   'Neha Joshi',
   'Prajwol Bhandari',
@@ -43,7 +43,7 @@ const N = s => s.toLowerCase().replace(/[\s._\-]/g, '')
 // Key: normalized username  →  Value: roster name (exact string from ROSTER)
 const MANUAL_OVERRIDES = {
   sk:          'Suyesh',
-  stk:         'Munkii',
+  stk:         'Sirish',
   pdai:        'Prashant Upadhyay',
   prajwol123:  'Prajwol Bhandari',
 }

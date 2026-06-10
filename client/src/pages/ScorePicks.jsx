@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, forwardRef } from 'react'
 import { picks as picksApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 /**
  * Compact name for narrow screens.
@@ -430,6 +432,124 @@ export default function ScorePicks() {
 
   const koRounds = ['R32', 'R16', 'QF', 'SF', 'Final']
 
+  function calcPtsForPick(pick, result) {
+    if (!pick || pick.home_goals == null || !result || result.home_goals == null) return null
+    const ph = pick.home_goals, pa = pick.away_goals
+    const rh = result.home_goals, ra = result.away_goals
+    if (ph === rh && pa === ra) return 10
+    const outcome = (h, a) => h > a ? 'home' : a > h ? 'away' : 'draw'
+    if (outcome(ph, pa) !== outcome(rh, ra)) return 0
+    return ph - pa === rh - ra ? 6 : 4
+  }
+
+  function handleDownloadPDF() {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const GOLD  = [201, 162, 39]
+    const DARK  = [21, 19, 12]
+    const WHITE = [255, 255, 255]
+    const LIGHT = [245, 245, 245]
+
+    // ── Header bar ──────────────────────────────────────────────────────────
+    doc.setFillColor(...DARK)
+    doc.rect(0, 0, 210, 30, 'F')
+    doc.setTextColor(...GOLD)
+    doc.setFontSize(18)
+    doc.setFont('helvetica', 'bold')
+    doc.text('WC 2026 Score Picks', 14, 13)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...WHITE)
+    doc.text(`Player: ${user?.username}`, 14, 22)
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, 140, 22)
+
+    // ── Summary line ────────────────────────────────────────────────────────
+    doc.setTextColor(...DARK)
+    doc.setFontSize(8)
+    doc.text(`${pickedCount} picks submitted  ·  ${realTotal} pts earned so far`, 14, 37)
+
+    let y = 42
+
+    // ── Group stage ─────────────────────────────────────────────────────────
+    for (const g of groups) {
+      const gMatches = groupMatches.filter(m => m.group === g)
+
+      // Group title
+      doc.setFillColor(...DARK)
+      doc.rect(14, y, 182, 6, 'F')
+      doc.setTextColor(...GOLD)
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'bold')
+      doc.text(`  Group ${g}`, 14, y + 4.2)
+      y += 7
+
+      const rows = gMatches.map(m => {
+        const pick   = myPicks[m.id]
+        const result = results[m.id]
+        const home   = typeof m.home === 'string' ? m.home : 'TBD'
+        const away   = typeof m.away === 'string' ? m.away : 'TBD'
+        const pickStr   = pick?.home_goals != null ? `${pick.home_goals} – ${pick.away_goals}` : '—'
+        const resultStr = result?.home_goals != null ? `${result.home_goals} – ${result.away_goals}` : '—'
+        const pts = calcPtsForPick(pick, result)
+        const ptsStr = pts != null ? `+${pts}` : '—'
+        return [m.id.replace('m', ''), home, pickStr, away, resultStr, ptsStr]
+      })
+
+      autoTable(doc, {
+        head: [['#', 'Home Team', 'My Pick', 'Away Team', 'Result', 'Pts']],
+        body: rows,
+        startY: y,
+        margin: { left: 14, right: 14 },
+        tableWidth: 182,
+        headStyles: {
+          fillColor: [50, 50, 50],
+          textColor: GOLD,
+          fontStyle: 'bold',
+          fontSize: 7.5,
+          cellPadding: 2,
+        },
+        bodyStyles: { fontSize: 7.5, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 50 },
+          2: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+          3: { cellWidth: 50 },
+          4: { cellWidth: 22, halign: 'center' },
+          5: { cellWidth: 15, halign: 'center' },
+        },
+        alternateRowStyles: { fillColor: LIGHT },
+        didParseCell(data) {
+          if (data.section === 'body' && data.column.index === 5) {
+            const v = data.cell.raw
+            if (v === '+10') data.cell.styles.textColor = [22, 163, 74]
+            else if (v === '+6') data.cell.styles.textColor = [161, 98, 7]
+            else if (v === '+4') data.cell.styles.textColor = [234, 88, 12]
+            else if (v === '+0') data.cell.styles.textColor = [185, 28, 28]
+          }
+        },
+      })
+
+      y = doc.lastAutoTable.finalY + 5
+
+      // Page break between groups if needed
+      if (y > 268) { doc.addPage(); y = 14 }
+    }
+
+    // ── Scoring legend ───────────────────────────────────────────────────────
+    if (y > 240) { doc.addPage(); y = 14 }
+    y += 4
+    doc.setDrawColor(180, 180, 180)
+    doc.line(14, y, 196, y)
+    y += 5
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...DARK)
+    doc.text('Scoring: ', 14, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text('+10 exact score  ·  +6 right winner & goal diff  ·  +4 right winner / draw  ·  0 wrong outcome', 32, y)
+
+    doc.save(`wc2026-picks-${user?.username || 'player'}.pdf`)
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       {/* Identity banner — always visible so users on shared devices know whose account this is */}
@@ -459,6 +579,15 @@ export default function ScorePicks() {
             <span>{pickedCount} picks</span>
             {resultsIn > 0 && <span>· {resultsIn} results in</span>}
           </div>
+          {/* Download PDF — visible whenever picks exist */}
+          {pickedCount > 0 && (
+            <button
+              onClick={handleDownloadPDF}
+              className="text-xs text-fifa-gold hover:text-yellow-300 mt-1 underline underline-offset-2"
+            >
+              Download PDF
+            </button>
+          )}
           {/* Clear all picks — only when open and at least one pick exists */}
           {!locked && pickedCount > 0 && (
             confirmClear ? (

@@ -5,6 +5,7 @@ import bracketRoutes from './routes/brackets.js'
 import adminRoutes from './routes/admin.js'
 import picksRoutes from './routes/picks.js'
 import db, { initDB } from './database.js'
+import { seedPdaiPicks } from './seeds/pdai-picks.js'
 import { runResultsSync } from './resultsFetcher.js'
 import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
 
@@ -51,6 +52,7 @@ function startScheduler() {
 async function main() {
   try {
     await initDB()
+    await seedPdaiPicks(db)
   } catch (err) {
     console.error('Failed to initialise database:', err.message)
     process.exit(1)
