@@ -23,8 +23,12 @@ export default function Leaderboard() {
   if (loading) return <div className="p-8 text-gray-400 text-center">Loading…</div>
 
   const { leaderboard = [], locked, results_count = 0 } = data || {}
-  const submitted   = leaderboard.filter(e => e.has_picks)
+
+  // Before lock: show who submitted (alphabetical, no scores) vs who hasn't
+  // After lock: full ranked leaderboard with scores
+  const submitted    = leaderboard.filter(e => e.has_picks)
   const notSubmitted = leaderboard.filter(e => !e.has_picks)
+  const submittedAlpha = [...submitted].sort((a, b) => a.username.localeCompare(b.username))
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -32,7 +36,7 @@ export default function Leaderboard() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">🏆 Leaderboard</h1>
-          {results_count > 0 && (
+          {locked && results_count > 0 && (
             <p className="text-xs text-gray-500 mt-1">{results_count} match results in</p>
           )}
         </div>
@@ -45,46 +49,92 @@ export default function Leaderboard() {
         </div>
       </div>
 
-      {/* Rankings */}
-      <div className="card divide-y divide-gray-800 mb-6">
-        {submitted.length === 0 && (
-          <p className="text-gray-400 text-sm py-6 text-center">No picks submitted yet.</p>
-        )}
-        {submitted.map((entry, i) => {
-          const isMe = entry.user_id === user?.id
-          return (
-            <div
-              key={entry.user_id}
-              className={`flex items-center justify-between py-3 px-1 ${
-                isMe ? 'text-fifa-gold' : ''
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-xl w-8 text-center">
-                  {MEDALS[i] || <span className="text-sm text-gray-400">{i + 1}.</span>}
-                </span>
-                <div>
-                  <span className="font-semibold">
-                    {entry.username}
-                    {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
-                  </span>
-                  <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
-                </div>
+      {!locked ? (
+        /* ── Picks still open: show who's in, no scores ── */
+        <div className="space-y-4 mb-6">
+          <div className="card">
+            <p className="text-xs text-gray-500 mb-3 uppercase tracking-wide font-medium">
+              Submitted ({submitted.length})
+            </p>
+            {submitted.length === 0 ? (
+              <p className="text-gray-500 text-sm">No picks submitted yet.</p>
+            ) : (
+              <div className="divide-y divide-gray-800">
+                {submittedAlpha.map(entry => {
+                  const isMe = entry.user_id === user?.id
+                  return (
+                    <div key={entry.user_id} className="flex items-center justify-between py-2.5">
+                      <span className={`font-medium ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
+                        {entry.username}
+                        {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+                      </span>
+                      <span className="text-xs text-green-400">✓ submitted</span>
+                    </div>
+                  )
+                })}
               </div>
-              <span className="font-black text-xl tabular-nums">
-                {entry.total}
-                <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
-              </span>
-            </div>
-          )
-        })}
-      </div>
+            )}
+          </div>
 
-      {/* Not submitted */}
-      {notSubmitted.length > 0 && (
+          {notSubmitted.length > 0 && (
+            <div className="card">
+              <p className="text-xs text-gray-500 mb-3 uppercase tracking-wide font-medium">
+                Not submitted yet ({notSubmitted.length})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {notSubmitted.map(e => (
+                  <span key={e.user_id} className="text-xs bg-gray-800 text-gray-400 px-3 py-1 rounded-full">
+                    {e.username}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-center text-gray-600">
+            Rankings and scores are revealed once picks are locked.
+          </p>
+        </div>
+      ) : (
+        /* ── Picks locked: full ranked leaderboard ── */
+        <div className="card divide-y divide-gray-800 mb-6">
+          {submitted.length === 0 && (
+            <p className="text-gray-400 text-sm py-6 text-center">No picks submitted yet.</p>
+          )}
+          {submitted.map((entry, i) => {
+            const isMe = entry.user_id === user?.id
+            return (
+              <div
+                key={entry.user_id}
+                className={`flex items-center justify-between py-3 px-1 ${isMe ? 'text-fifa-gold' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl w-8 text-center">
+                    {MEDALS[i] || <span className="text-sm text-gray-400">{i + 1}.</span>}
+                  </span>
+                  <div>
+                    <span className="font-semibold">
+                      {entry.username}
+                      {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+                    </span>
+                    <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
+                  </div>
+                </div>
+                <span className="font-black text-xl tabular-nums">
+                  {entry.total}
+                  <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Not submitted — only shown alongside ranked view after lock */}
+      {locked && notSubmitted.length > 0 && (
         <div className="mb-6">
           <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-            No picks yet ({notSubmitted.length})
+            No picks ({notSubmitted.length})
           </h2>
           <div className="flex flex-wrap gap-2">
             {notSubmitted.map(e => (

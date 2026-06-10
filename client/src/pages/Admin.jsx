@@ -2,6 +2,101 @@ import { useState, useEffect } from 'react'
 import { admin, tournament, brackets, picks as picksApi } from '../api'
 import PicksReport from '../components/PicksReport'
 
+// ── Participant roster (from WhatsApp group) ──────────────────────────────────
+const ROSTER = [
+  'Suyesh',
+  'Adya Mishra',
+  'Aashish Lohani',
+  'Avash Lohani',
+  'Bibek Bhattarai',
+  'Bishav Bhattarai',
+  'Bishesh',
+  'Chu',
+  'Deepa Rajkarnikar',
+  'Jyoti Lohani',
+  'Kalyan',
+  'Munkii',
+  'Nanda',
+  'Neha Joshi',
+  'Prajwol Bhandari',
+  'Prakash',
+  'Prashant Upadhyay',
+  'Priyanka Upadhyay',
+  'Rakshya Pant',
+  'Rohit',
+  'Rubina',
+  'Sankalpa',
+  'Shraddha',
+  'Shreesh Bhattarai',
+  'Sinds',
+  'Smriti Dhakal',
+  'Subodh Gurung',
+  'Subrat Khanal',
+  'Subrat Sharma',
+  'Swechha Gurung',
+]
+
+// Normalize: lowercase, strip spaces/dots/underscores/hyphens
+const N = s => s.toLowerCase().replace(/[\s._\-]/g, '')
+
+function buildRosterMatches(roster, appUsers, leaderboard) {
+  // Pre-count shared first and last names across the roster
+  const firstCount = {}, lastCount = {}
+  for (const name of roster) {
+    const parts = name.split(' ')
+    const f = N(parts[0])
+    const l = parts.length > 1 ? N(parts.slice(1).join(' ')) : null
+    firstCount[f] = (firstCount[f] || 0) + 1
+    if (l) lastCount[l] = (lastCount[l] || 0) + 1
+  }
+
+  const lbMap = {}
+  for (const e of leaderboard) lbMap[e.user_id] = e
+
+  const matchedIds = new Set()
+
+  const results = roster.map(name => {
+    const parts   = name.split(' ')
+    const normFull  = N(name)
+    const normFirst = N(parts[0])
+    const normLast  = parts.length > 1 ? N(parts.slice(1).join(' ')) : null
+    const sharedFirst = firstCount[normFirst] > 1
+    const sharedLast  = normLast && lastCount[normLast] > 1
+
+    let match = null, confidence = 'high'
+
+    for (const u of appUsers) {
+      const nu = N(u.username)
+
+      // Full name (no spaces) — strongest signal
+      if (nu === normFull) { match = { user: u, lb: lbMap[u.id] }; confidence = 'high'; break }
+
+      // First + last both contained in username
+      if (normLast && nu.includes(normFirst) && nu.includes(normLast)) {
+        match = { user: u, lb: lbMap[u.id] }; confidence = 'high'; break
+      }
+
+      // First name only — only confident if unique across roster
+      if (nu === normFirst) {
+        if (!sharedFirst) { match = { user: u, lb: lbMap[u.id] }; confidence = 'high'; break }
+        else if (!match)  { match = { user: u, lb: lbMap[u.id] }; confidence = 'ambiguous' }
+      }
+
+      // Last name only — only confident if unique across roster
+      if (normLast && nu === normLast && !match) {
+        if (!sharedLast) { match = { user: u, lb: lbMap[u.id] }; confidence = 'high' }
+        else             { match = { user: u, lb: lbMap[u.id] }; confidence = 'ambiguous' }
+      }
+    }
+
+    if (match) matchedIds.add(match.user.id)
+    return { name, match, confidence }
+  })
+
+  const unmatched = appUsers.filter(u => !matchedIds.has(u.id))
+  return { results, unmatched }
+}
+
 export default function Admin() {
   const [settings, setSettings] = useState({})
   const [groups, setGroups] = useState({})
@@ -10,6 +105,7 @@ export default function Admin() {
   const [lockTime, setLockTime] = useState('')
   const [tab, setTab] = useState('scores')
   const [msg, setMsg] = useState('')
+  const [rosterLeaderboard, setRosterLeaderboard] = useState([])
 
   // Group result form state
   const [groupForm, setGroupForm] = useState({ group: 'A', first: '', second: '', third: '', third_advanced: false })
@@ -22,11 +118,12 @@ export default function Admin() {
 
   useEffect(() => {
     async function load() {
-      const [s, t, u] = await Promise.all([admin.settings(), tournament.data(), admin.users()])
+      const [s, t, u, lb] = await Promise.all([admin.settings(), tournament.data(), admin.users(), picksApi.leaderboard()])
       setSettings(s.data)
       setGroups(t.data.groups)
       setUsers(u.data)
       setLockTime(s.data.lock_time || '')
+      setRosterLeaderboard(lb.data.leaderboard || [])
       await loadResults()
     }
     load()
@@ -252,6 +349,7 @@ export default function Admin() {
     { key: 'picks',    label: '🔒 Picks Lock' },
     { key: 'report',   label: '📊 Report' },
     { key: 'users',    label: '👥 Users' },
+    { key: 'roster',   label: '📋 Roster' },
   ]
 
   return (
@@ -691,6 +789,91 @@ export default function Admin() {
       )}
 
       {tab === 'report' && <PicksReport />}
+
+      {tab === 'roster' && (() => {
+        const { results, unmatched } = buildRosterMatches(ROSTER, users, rosterLeaderboard)
+
+        const withPicks    = results.filter(r => r.match && r.confidence === 'high' && r.match.lb?.has_picks)
+        const signedNoPick = results.filter(r => r.match && r.confidence === 'high' && !r.match.lb?.has_picks)
+        const ambig        = results.filter(r => r.confidence === 'ambiguous')
+        const notSignedUp  = results.filter(r => !r.match)
+
+        return (
+          <div>
+            {/* Summary chips */}
+            <div className="grid grid-cols-4 gap-2 mb-4 text-center">
+              <div className="card py-3">
+                <div className="text-2xl font-black text-green-400">{withPicks.length}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Picks in</div>
+              </div>
+              <div className="card py-3">
+                <div className="text-2xl font-black text-yellow-400">{signedNoPick.length}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Signed up</div>
+              </div>
+              <div className="card py-3">
+                <div className="text-2xl font-black text-red-400">{notSignedUp.length}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Missing</div>
+              </div>
+              <div className="card py-3">
+                <div className="text-2xl font-black text-gray-400">{unmatched.length + ambig.length}</div>
+                <div className="text-xs text-gray-400 mt-0.5">⚠ Review</div>
+              </div>
+            </div>
+
+            {/* Full roster list */}
+            <div className="card divide-y divide-gray-800 mb-4">
+              {results.map(({ name, match, confidence }) => {
+                const hasPicks = match?.lb?.has_picks
+                const picksCount = match?.lb?.picks_count || 0
+
+                let icon, statusText, rowClass
+                if (!match) {
+                  icon = '❌'; statusText = 'Not signed up'; rowClass = 'text-gray-400'
+                } else if (confidence === 'ambiguous') {
+                  icon = '❓'; statusText = `Can't confirm — username "${match.user.username}" may match`; rowClass = 'text-gray-500'
+                } else if (hasPicks) {
+                  icon = '✅'; statusText = `${picksCount} picks · @${match.user.username}`; rowClass = 'text-green-400'
+                } else {
+                  icon = '🟡'; statusText = `Signed up, no picks · @${match.user.username}`; rowClass = 'text-yellow-400'
+                }
+
+                return (
+                  <div key={name} className="flex items-center justify-between py-2.5 px-1 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base shrink-0">{icon}</span>
+                      <span className="text-white font-medium text-sm truncate">{name}</span>
+                    </div>
+                    <span className={`text-xs shrink-0 ${rowClass}`}>{statusText}</span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Unmatched app users */}
+            {unmatched.length > 0 && (
+              <div className="card mb-4 border border-yellow-900/40">
+                <p className="text-xs text-yellow-400 font-semibold mb-1">
+                  ⚠ Registered users not matched to any participant
+                </p>
+                <p className="text-xs text-gray-500 mb-3">
+                  These accounts exist in the app but couldn't be attributed to anyone on the roster. Ask them who they are.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {unmatched.map(u => (
+                    <span key={u.id} className="text-xs bg-yellow-900/30 border border-yellow-800/50 text-yellow-300 px-3 py-1 rounded-full">
+                      @{u.username}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-gray-600 text-center">
+              ❓ = Username couldn't be confidently matched. Shown as best guess only — verify manually.
+            </p>
+          </div>
+        )
+      })()}
 
       {tab === 'users' && (
         <div className="card divide-y divide-gray-800">
