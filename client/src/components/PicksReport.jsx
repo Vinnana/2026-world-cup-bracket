@@ -67,124 +67,213 @@ function downloadCSV(report) {
 function downloadPDF(report) {
   const { users, matches, totals, generated_at } = report
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' })
-  const gold = [201, 162, 39]
-  const dark = [21, 19, 12]
+  const PW = doc.internal.pageSize.width   // 841.89 pt
+  const PH = doc.internal.pageSize.height  // 595.28 pt
 
-  // ── Title block ────────────────────────────────────────────────────────────
-  doc.setFillColor(...dark)
-  doc.rect(0, 0, doc.internal.pageSize.width, 50, 'F')
-  doc.setTextColor(...gold)
-  doc.setFontSize(18)
+  // ── Colour palette ──────────────────────────────────────────────────────────
+  const DARK   = [21,  19,  12]
+  const GOLD   = [201, 162, 39]
+  const WHITE  = [255, 255, 255]
+  const LGRAY  = [247, 247, 247]
+  const MGRAY  = [155, 155, 155]
+  const BLACK  = [22,  22,  22]
+  const GOLDDK = [140, 100,  5]
+  // Pick tier – light pastels, dark text (legible on paper)
+  const T10F = [187, 247, 208];  const T10T = [20,  83,  45]
+  const T6F  = [254, 243, 169];  const T6T  = [113, 63,   0]
+  const T4F  = [254, 215, 170];  const T4T  = [154, 52,  18]
+  const T0F  = [254, 202, 202];  const T0T  = [153, 27,  27]
+  const TNOF = [243, 243, 243];  const TNOT = [120, 120, 120]
+
+  // ── PAGE 1 — Cover + Standings ──────────────────────────────────────────────
+  doc.setFillColor(...DARK)
+  doc.rect(0, 0, PW, 62, 'F')
   doc.setFont('helvetica', 'bold')
-  doc.text('WC 2026 Score Picks — Full Report', 30, 28)
-  doc.setFontSize(9)
-  doc.setTextColor(160, 160, 160)
+  doc.setFontSize(22)
+  doc.setTextColor(...GOLD)
+  doc.text('2026 FIFA World Cup Score Picks', 30, 30)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Generated: ${new Date(generated_at).toLocaleString()}`, 30, 42)
+  doc.setFontSize(12)
+  doc.setTextColor(200, 200, 200)
+  doc.text('Full Player Picks Report', 30, 48)
+  doc.setFontSize(8)
+  doc.setTextColor(...MGRAY)
+  doc.text(`Generated: ${new Date(generated_at).toLocaleString()}`, PW - 30, 48, { align: 'right' })
 
-  // ── Leaderboard summary ────────────────────────────────────────────────────
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(11)
+  // Gold rule
+  doc.setDrawColor(...GOLD)
+  doc.setLineWidth(1.2)
+  doc.line(30, 70, PW - 30, 70)
+
+  // Standings heading
   doc.setFont('helvetica', 'bold')
-  doc.text('Standings', 30, 66)
+  doc.setFontSize(10)
+  doc.setTextColor(...BLACK)
+  doc.text('STANDINGS', 30, 88)
+
   autoTable(doc, {
-    startY: 72,
-    head: [['Rank', 'Player', 'Total Points']],
-    body: users.map((u, i) => [
-      i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`,
-      u.username,
-      `${totals[u.id] ?? 0} pts`,
-    ]),
-    headStyles: { fillColor: gold, textColor: dark, fontStyle: 'bold' },
-    bodyStyles: { textColor: [220, 220, 220], fillColor: [30, 27, 20] },
-    alternateRowStyles: { fillColor: [40, 37, 28] },
+    startY: 94,
+    head: [['Rank', 'Player', 'Points']],
+    body: users.map((u, i) => [`#${i + 1}`, u.username, `${totals[u.id] ?? 0} pts`]),
+    headStyles: { fillColor: DARK, textColor: GOLD, fontStyle: 'bold', fontSize: 9 },
+    bodyStyles: { textColor: BLACK, fillColor: WHITE, fontSize: 10 },
+    alternateRowStyles: { fillColor: LGRAY },
+    columnStyles: {
+      0: { cellWidth: 32, halign: 'center' },
+      1: { cellWidth: 160 },
+      2: { cellWidth: 72, halign: 'center', fontStyle: 'bold' },
+    },
     margin: { left: 30 },
-    tableWidth: 260,
-    styles: { fontSize: 9 },
+    tableWidth: 264,
+    styles: { cellPadding: 4.5 },
   })
 
-  // ── Full picks table ───────────────────────────────────────────────────────
-  const startY = doc.lastAutoTable.finalY + 20
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(11)
+  // Scoring key
+  const keyY = doc.lastAutoTable.finalY + 24
   doc.setFont('helvetica', 'bold')
-  doc.text('All Picks', 30, startY - 6)
+  doc.setFontSize(10)
+  doc.setTextColor(...BLACK)
+  doc.text('SCORING KEY', 30, keyY)
 
-  const colHeaders = ['#', 'Round', 'Home', 'Away', 'Result', ...users.map(u => u.username)]
+  const tiers = [
+    { label: '10 pts  Exact score',            fill: T10F, text: T10T },
+    { label: '6 pts  Right result + goal diff', fill: T6F,  text: T6T  },
+    { label: '4 pts  Right result only',        fill: T4F,  text: T4T  },
+    { label: '0 pts  Wrong result',             fill: T0F,  text: T0T  },
+  ]
+  let kx = 30
+  tiers.forEach(t => {
+    const bw = 175, bh = 22
+    doc.setFillColor(...t.fill)
+    doc.roundedRect(kx, keyY + 8, bw, bh, 2, 2, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...t.text)
+    doc.text(t.label, kx + bw / 2, keyY + 21, { align: 'center' })
+    kx += bw + 8
+  })
 
-  // Build body rows grouped by round
-  const body = []
-  const groupColors = {}  // track alternating group colours
-  let lastRound = null
+  // ── PAGE 2+ — All Picks table ───────────────────────────────────────────────
+  doc.addPage()
+
+  const HEADER_H = 38
+
+  function drawPicksPageHeader() {
+    const pg = doc.internal.getCurrentPageInfo().pageNumber
+    doc.setFillColor(...DARK)
+    doc.rect(0, 0, PW, HEADER_H, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(12)
+    doc.setTextColor(...GOLD)
+    doc.text('WC 2026 Score Picks — All Picks', 30, 24)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(...MGRAY)
+    doc.text(`Page ${pg}`, PW - 30, 24, { align: 'right' })
+  }
+
+  // Dynamic column widths
+  const avail   = PW - 60   // 30pt margin each side
+  const fixedW  = 24 + 52 + 90 + 90 + 38   // # + grp + home + away + result = 294
+  const userW   = Math.max(42, Math.floor((avail - fixedW) / Math.max(users.length, 1)))
+
+  const colStyles = {
+    0: { cellWidth: 24, halign: 'center' },
+    1: { cellWidth: 52 },
+    2: { cellWidth: 90 },
+    3: { cellWidth: 90 },
+    4: { cellWidth: 38, halign: 'center' },
+  }
+  users.forEach((_, i) => { colStyles[5 + i] = { cellWidth: userW, halign: 'center' } })
+
+  // Build table body with section-header rows
+  const rows = []
+  let prevRound = null, prevGroup = null
 
   for (const m of matches) {
-    // Section divider row for new round
-    if (m.round !== lastRound) {
-      body.push({ isSection: true, label: ROUND_LABELS[m.round] || m.round })
-      lastRound = m.round
+    const totalCols = 5 + users.length
+
+    // Round-level header
+    if (m.round !== prevRound) {
+      rows.push([{
+        content: (ROUND_LABELS[m.round] || m.round).toUpperCase(),
+        colSpan: totalCols,
+        styles: {
+          fillColor: DARK, textColor: GOLD, fontStyle: 'bold', fontSize: 8.5,
+          cellPadding: { top: 5, bottom: 5, left: 10, right: 10 },
+        },
+      }])
+      prevRound = m.round
+      prevGroup = null
     }
 
-    const resultStr = m.result ? `${m.result.home_goals}–${m.result.away_goals}` : '–'
+    // Group sub-header (Group stage only)
+    if (m.round === 'Group' && m.group && m.group !== prevGroup) {
+      rows.push([{
+        content: `  Group ${m.group}`,
+        colSpan: totalCols,
+        styles: {
+          fillColor: [40, 38, 26], textColor: [215, 175, 60], fontStyle: 'bold', fontSize: 8,
+          cellPadding: { top: 3, bottom: 3, left: 10, right: 10 },
+        },
+      }])
+      prevGroup = m.group
+    }
+
+    const resultStr = m.result ? `${m.result.home_goals}-${m.result.away_goals}` : '-'
+
     const userCells = users.map(u => {
       const p = m.picks[u.id]
-      if (!p) return { content: '–', styles: { textColor: [100, 100, 100] } }
-      const pick = `${p.home_goals}–${p.away_goals}`
-      const pts  = p.pts != null ? `+${p.pts}` : ''
+      if (!p) return { content: '', styles: { fillColor: TNOF, textColor: TNOT, halign: 'center' } }
+      const pick   = `${p.home_goals}-${p.away_goals}`
+      const ptsStr = p.pts != null ? `  +${p.pts}` : ''
+      let fill = TNOF, text = TNOT
+      if (p.pts === 10) { fill = T10F; text = T10T }
+      else if (p.pts === 6)  { fill = T6F;  text = T6T  }
+      else if (p.pts === 4)  { fill = T4F;  text = T4T  }
+      else if (p.pts === 0)  { fill = T0F;  text = T0T  }
       return {
-        content: pts ? `${pick}\n${pts}` : pick,
-        styles: {
-          textColor: [255, 255, 255],
-          fillColor: p.pts != null ? ptsRgb(p.pts) : [40, 37, 28],
-          fontStyle: 'bold',
-        },
+        content: pick + ptsStr,
+        styles: { fillColor: fill, textColor: text, fontStyle: 'bold', halign: 'center', fontSize: 7.5 },
       }
     })
 
-    body.push([
-      { content: m.no, styles: { textColor: [180, 180, 180] } },
-      { content: m.group ? `Grp ${m.group}` : (ROUND_LABELS[m.round] || m.round), styles: { textColor: [180, 180, 180] } },
-      { content: m.home, styles: { textColor: [220, 220, 220] } },
-      { content: m.away, styles: { textColor: [220, 220, 220] } },
-      { content: resultStr, styles: { fontStyle: 'bold', textColor: [201, 162, 39] } },
+    rows.push([
+      { content: `${m.no}`, styles: { textColor: MGRAY, halign: 'center', fontSize: 7 } },
+      { content: m.round === 'Group' ? (m.group ? `Grp ${m.group}` : '') : '', styles: { textColor: MGRAY, fontSize: 7 } },
+      { content: m.home, styles: { textColor: BLACK, fontSize: 7.5 } },
+      { content: m.away, styles: { textColor: BLACK, fontSize: 7.5 } },
+      { content: resultStr, styles: { fontStyle: 'bold', textColor: GOLDDK, halign: 'center', fontSize: 8 } },
       ...userCells,
     ])
   }
 
-  // Totals footer
-  const totalRow = [
-    { content: '', styles: {} },
-    { content: 'TOTAL', styles: { fontStyle: 'bold', textColor: gold } },
-    { content: '', styles: {} },
-    { content: '', styles: {} },
-    { content: '', styles: {} },
+  // Footer totals row
+  const footRow = [
+    { content: 'TOTAL', colSpan: 5, styles: { fontStyle: 'bold', textColor: BLACK, halign: 'right', fontSize: 9 } },
     ...users.map(u => ({
       content: `${totals[u.id] ?? 0} pts`,
-      styles: { fontStyle: 'bold', textColor: gold },
+      styles: { fontStyle: 'bold', textColor: GOLDDK, halign: 'center', fontSize: 9 },
     })),
   ]
 
   autoTable(doc, {
-    startY,
-    head: [colHeaders],
-    body: body.filter(r => !r.isSection).map(r => r),
-    headStyles: { fillColor: dark, textColor: gold, fontStyle: 'bold', lineWidth: 0.5, lineColor: gold },
-    bodyStyles: { fillColor: [30, 27, 20], textColor: [220, 220, 220], fontSize: 7.5 },
-    alternateRowStyles: { fillColor: [38, 35, 25] },
-    foot: [totalRow],
-    footStyles: { fillColor: dark, textColor: gold },
-    margin: { left: 30, right: 30 },
-    styles: { cellPadding: 3, lineColor: [60, 57, 45], lineWidth: 0.3 },
-    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 48 }, 2: { cellWidth: 72 }, 3: { cellWidth: 72 }, 4: { cellWidth: 38 } },
-    didDrawPage: (data) => {
-      // Repeat header on every page
-      doc.setFillColor(...dark)
-      doc.rect(0, 0, doc.internal.pageSize.width, 18, 'F')
-      doc.setTextColor(...gold)
-      doc.setFontSize(7)
-      doc.text('WC 2026 Score Picks Report', 30, 12)
-      doc.setTextColor(120, 120, 120)
-      doc.text(`Page ${data.pageNumber}`, doc.internal.pageSize.width - 50, 12)
+    startY: HEADER_H + 6,
+    head: [['#', 'Grp', 'Home Team', 'Away Team', 'Result', ...users.map(u => u.username)]],
+    body: rows,
+    foot: [footRow],
+    headStyles: {
+      fillColor: [40, 38, 26], textColor: GOLD, fontStyle: 'bold', fontSize: 8,
+      lineColor: [80, 72, 40], lineWidth: 0.4,
     },
+    bodyStyles: { textColor: BLACK, fillColor: WHITE, fontSize: 7.5 },
+    alternateRowStyles: { fillColor: LGRAY },
+    footStyles: { fillColor: [240, 240, 240], textColor: BLACK, fontStyle: 'bold' },
+    margin: { left: 30, right: 30, top: HEADER_H + 6 },
+    styles: { cellPadding: 2.5, lineColor: [218, 218, 218], lineWidth: 0.25, overflow: 'ellipsize' },
+    columnStyles: colStyles,
+    showHead: 'everyPage',
+    didDrawPage: () => drawPicksPageHeader(),
   })
 
   doc.save(`wc2026-picks-report-${new Date().toISOString().slice(0, 10)}.pdf`)

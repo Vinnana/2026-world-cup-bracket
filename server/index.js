@@ -4,7 +4,7 @@ import authRoutes from './routes/auth.js'
 import bracketRoutes from './routes/brackets.js'
 import adminRoutes from './routes/admin.js'
 import picksRoutes from './routes/picks.js'
-import db from './database.js'
+import db, { initDB } from './database.js'
 import { runResultsSync } from './resultsFetcher.js'
 import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
 
@@ -47,9 +47,19 @@ function startScheduler() {
   }, FETCH_INTERVAL_MIN * 60 * 1000)
 }
 
-app.listen(PORT, () => {
-  console.log(`WC2026 Bracket server running on http://localhost:${PORT}`)
-  console.log('First run: POST /api/auth/register with { username, password } to create your admin account')
-  console.log('Then promote yourself via: POST /api/admin/promote after logging in')
-  startScheduler()
-})
+// ── Startup: init DB first, then open the server ────────────────────────────
+async function main() {
+  try {
+    await initDB()
+  } catch (err) {
+    console.error('Failed to initialise database:', err.message)
+    process.exit(1)
+  }
+
+  app.listen(PORT, () => {
+    console.log(`WC2026 Bracket server running on http://localhost:${PORT}`)
+    startScheduler()
+  })
+}
+
+main()
