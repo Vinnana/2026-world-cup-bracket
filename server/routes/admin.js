@@ -142,6 +142,17 @@ router.post('/picks-lock', requireAdmin, (req, res) => {
   res.json({ success: true, locked })
 })
 
+// Clear all score picks for a specific user (admin use — e.g. mistaken pre-population)
+router.delete('/user-picks/:user_id', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const before = db.getScorePicksByUser(user_id).length
+  db.deletePicksByUser(user_id)
+  res.json({ success: true, username: user.username, cleared: before })
+})
+
 // Open / close the knockout picks phase (Phase 2)
 router.post('/knockout-open', requireAdmin, (req, res) => {
   const { open } = req.body

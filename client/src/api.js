@@ -118,6 +118,9 @@ export const admin = {
 
   report: () =>
     api.get('/admin/report'),
+
+  clearUserPicks: (user_id) =>
+    api.delete(`/admin/user-picks/${user_id}`),
 };
 
 export default api;

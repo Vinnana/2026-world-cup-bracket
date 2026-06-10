@@ -63,6 +63,18 @@ export default function Admin() {
     flash('✓ User promoted to admin')
   }
 
+  const [confirmClear, setConfirmClear] = useState(null) // user object pending confirm
+  async function handleClearPicks(user) {
+    try {
+      const res = await admin.clearUserPicks(user.id)
+      flash(`✓ Cleared ${res.data.cleared} picks for ${user.username}`)
+    } catch (err) {
+      flash(err.response?.data?.error || 'Failed to clear picks')
+    } finally {
+      setConfirmClear(null)
+    }
+  }
+
   const [pwUser, setPwUser] = useState(null)
   const [pwValue, setPwValue] = useState('')
   async function handleSetPassword() {
@@ -662,7 +674,7 @@ export default function Admin() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button onClick={() => setPwUser(u)} className="text-xs btn-secondary">
                   Set password
                 </button>
@@ -671,9 +683,41 @@ export default function Admin() {
                     Make Admin
                   </button>
                 )}
+                <button
+                  onClick={() => setConfirmClear(u)}
+                  className="text-xs bg-red-900/40 hover:bg-red-800/60 text-red-300 border border-red-800/50 px-2 py-1 rounded-lg"
+                >
+                  Clear Picks
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmClear && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4"
+          onClick={() => setConfirmClear(null)}
+        >
+          <div className="card w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-red-400 mb-2">Clear picks for {confirmClear.username}?</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              This will permanently delete all of {confirmClear.username}'s score picks.
+              They will be able to re-enter their picks from scratch.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmClear(null)} className="btn-secondary text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={() => handleClearPicks(confirmClear)}
+                className="bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg text-sm"
+              >
+                Yes, clear all picks
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

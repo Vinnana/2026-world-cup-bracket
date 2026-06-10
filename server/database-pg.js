@@ -324,6 +324,11 @@ export default class PgDB {
     return this._data.score_picks || []
   }
 
+  deletePicksByUser(user_id) {
+    this._data.score_picks = (this._data.score_picks || []).filter(p => p.user_id !== user_id)
+    this._w('DELETE FROM wc_score_picks WHERE user_id=$1', [user_id])
+  }
+
   // ─── Match scores ─────────────────────────────────────────────────────────
 
   upsertMatchScore(match_id, { home_team, away_team, home_goals, away_goals }) {

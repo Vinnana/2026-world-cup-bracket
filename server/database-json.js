@@ -169,6 +169,12 @@ class DB {
     return this._data.score_picks || []
   }
 
+  deletePicksByUser(user_id) {
+    if (!this._data.score_picks) return
+    this._data.score_picks = this._data.score_picks.filter(p => p.user_id !== user_id)
+    this._save()
+  }
+
   // ---------- match scores (admin-entered actual results for scoring system) ----------
   upsertMatchScore(match_id, { home_team, away_team, home_goals, away_goals }) {
     if (!this._data.match_scores) this._data.match_scores = []
