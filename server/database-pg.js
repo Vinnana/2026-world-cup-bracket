@@ -236,6 +236,14 @@ export default class PgDB {
     return user
   }
 
+  changeUsername(id, newUsername) {
+    const u = this._data.users.find(u => u.id === id)
+    if (!u) return false
+    u.username = newUsername
+    this._w('UPDATE wc_users SET username=$1 WHERE id=$2', [newUsername, id])
+    return true
+  }
+
   deleteUser(id) {
     this._data.users        = this._data.users.filter(u => u.id !== id)
     this._data.score_picks  = (this._data.score_picks || []).filter(p => p.user_id !== id)

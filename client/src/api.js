@@ -45,6 +45,9 @@ export const auth = {
   changePassword: (current_password, new_password) =>
     api.post('/auth/change-password', { current_password, new_password }),
 
+  changeUsername: (new_username, password) =>
+    api.post('/auth/change-username', { new_username, password }),
+
   requestReset: (username) =>
     api.post('/auth/request-reset', { username }),
 };
