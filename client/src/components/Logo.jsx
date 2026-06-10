@@ -6,7 +6,7 @@ export default function Logo({ compact = false }) {
   return (
     <div className="flex items-center gap-2.5 select-none">
       {/* SVG crest */}
-      <div className="relative flex items-center justify-center" style={{ width: 40, height: 44 }}>
+      <div className="relative flex items-center justify-center" style={{ width: 47, height: 51 }}>
         <svg
           viewBox="0 0 40 44"
           fill="none"
@@ -46,8 +46,8 @@ export default function Logo({ compact = false }) {
         <span
           style={{
             position: 'relative',
-            fontSize: 20,
-            marginTop: 10,
+            fontSize: 27,
+            marginTop: 12,
             filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.8))',
             lineHeight: 1,
           }}
@@ -61,15 +61,15 @@ export default function Logo({ compact = false }) {
         <div className="flex flex-col leading-none gap-0.5">
           <span
             className="text-fifa-gold font-black tracking-tight"
-            style={{ fontSize: 18, letterSpacing: '-0.02em' }}
+            style={{ fontSize: 25, letterSpacing: '-0.02em' }}
           >
             WC 2026
           </span>
           <div className="flex items-center gap-1">
-            <span className="text-[9px] tracking-[0.18em] uppercase text-gray-500 font-semibold">
+            <span className="text-[11px] tracking-[0.18em] uppercase text-gray-500 font-semibold">
               Score Picks
             </span>
-            <span className="text-[10px]">🇳🇵</span>
+            <span className="text-[12px]">🇳🇵</span>
           </div>
         </div>
       )}
