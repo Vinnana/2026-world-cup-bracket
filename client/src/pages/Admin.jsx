@@ -13,9 +13,6 @@ export default function Admin() {
   // Group result form state
   const [groupForm, setGroupForm] = useState({ group: 'A', first: '', second: '', third: '', third_advanced: false })
 
-  // Knockout result form
-  const [koForm, setKoForm] = useState({ match_id: '', home_team: '', away_team: '', winner: '', round: 'R32' })
-
   async function loadResults() {
     const r = await brackets.results()
     setGroupResults(r.data.groups || {})
@@ -57,12 +54,6 @@ export default function Admin() {
     } catch (err) {
       flash(err.response?.data?.error || 'Failed to save group result')
     }
-  }
-
-  async function handleKoResult(e) {
-    e.preventDefault()
-    await admin.knockoutResult(koForm.match_id, koForm.home_team, koForm.away_team, koForm.winner, koForm.round)
-    flash(`✓ ${koForm.match_id} result saved`)
   }
 
   async function handlePromote(user_id) {
@@ -213,7 +204,6 @@ export default function Admin() {
     { key: 'scores',   label: '⚽ Match Scores' },
     { key: 'sync',     label: '🔄 Live Scores API' },
     { key: 'picks',    label: '🔒 Picks Lock' },
-    { key: 'knockout', label: '🏆 Knockout Results' },
     { key: 'users',    label: '👥 Users' },
   ]
 
@@ -447,76 +437,6 @@ export default function Admin() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {tab === 'knockout' && (
-        <div className="card">
-          <p className="text-sm text-gray-400 mb-4">
-            Enter match results as each knockout game finishes. Match IDs follow the official
-            schedule: <span className="text-gray-300">m73…m88</span> (R32),
-            <span className="text-gray-300"> m89…m96</span> (R16),
-            <span className="text-gray-300"> m97…m100</span> (QF),
-            <span className="text-gray-300"> m101, m102</span> (SF),
-            <span className="text-gray-300"> m104</span> (Final).
-          </p>
-          <form onSubmit={handleKoResult} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Match ID</label>
-                <input
-                  className="input"
-                  placeholder="e.g. m73"
-                  value={koForm.match_id}
-                  onChange={e => setKoForm(f => ({ ...f, match_id: e.target.value }))}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Round</label>
-                <select
-                  className="input"
-                  value={koForm.round}
-                  onChange={e => setKoForm(f => ({ ...f, round: e.target.value }))}
-                >
-                  {['R32', 'R16', 'QF', 'SF', 'Final'].map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Home Team</label>
-                <input
-                  className="input"
-                  placeholder="Home team name"
-                  value={koForm.home_team}
-                  onChange={e => setKoForm(f => ({ ...f, home_team: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Away Team</label>
-                <input
-                  className="input"
-                  placeholder="Away team name"
-                  value={koForm.away_team}
-                  onChange={e => setKoForm(f => ({ ...f, away_team: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Winner</label>
-              <input
-                className="input"
-                placeholder="Winning team name (exact)"
-                value={koForm.winner}
-                onChange={e => setKoForm(f => ({ ...f, winner: e.target.value }))}
-                required
-              />
-            </div>
-            <button type="submit" className="btn-primary">Save Result</button>
-          </form>
         </div>
       )}
 
