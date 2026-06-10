@@ -67,11 +67,31 @@ export default function Admin() {
   async function handleClearPicks(user) {
     try {
       const res = await admin.clearUserPicks(user.id)
+      setReportCache(null)   // invalidate so next View Picks fetch is fresh
       flash(`✓ Cleared ${res.data.cleared} picks for ${user.username}`)
     } catch (err) {
       flash(err.response?.data?.error || 'Failed to clear picks')
     } finally {
       setConfirmClear(null)
+    }
+  }
+
+  // ── View picks for a user ────────────────────────────────────────────────
+  const [viewPicksUser,  setViewPicksUser]  = useState(null)
+  const [reportCache,    setReportCache]    = useState(null)
+  const [reportLoading,  setReportLoading]  = useState(false)
+
+  async function handleViewPicks(u) {
+    setViewPicksUser(u)
+    if (reportCache) return   // already loaded
+    setReportLoading(true)
+    try {
+      const res = await admin.report()
+      setReportCache(res.data)
+    } catch {
+      flash('⚠ Could not load picks data')
+    } finally {
+      setReportLoading(false)
     }
   }
 
@@ -688,6 +708,12 @@ export default function Admin() {
                 )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => handleViewPicks(u)}
+                  className="text-xs bg-blue-900/40 hover:bg-blue-800/60 text-blue-300 border border-blue-800/50 px-2 py-1 rounded-lg"
+                >
+                  View Picks
+                </button>
                 <button onClick={() => setPwUser(u)} className="text-xs btn-secondary">
                   Set password
                 </button>
@@ -715,6 +741,133 @@ export default function Admin() {
           ))}
         </div>
       )}
+
+      {/* ── View user picks modal ──────────────────────────────────────── */}
+      {viewPicksUser && (() => {
+        const report   = reportCache
+        const uid      = viewPicksUser.id
+        const total    = report?.totals?.[uid] ?? 0
+        const matches  = report?.matches ?? []
+
+        function ptsBadge(pts) {
+          if (pts === 10) return 'bg-green-800 text-green-200'
+          if (pts === 6)  return 'bg-yellow-800 text-yellow-200'
+          if (pts === 4)  return 'bg-orange-800 text-orange-200'
+          if (pts === 0)  return 'bg-red-900/70 text-red-300'
+          return ''
+        }
+
+        const groups     = [...new Set(matches.filter(m => m.round === 'Group').map(m => m.group))].sort()
+        const koRoundMap = { R32: 'Round of 32', R16: 'Round of 16', QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final' }
+        const koRounds   = ['R32', 'R16', 'QF', 'SF', 'Final']
+
+        return (
+          <div
+            className="fixed inset-0 bg-black/70 flex items-start justify-center z-50 px-4 py-8 overflow-y-auto"
+            onClick={() => setViewPicksUser(null)}
+          >
+            <div className="card w-full max-w-xl" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold text-white text-lg">{viewPicksUser.username}'s Picks</h3>
+                  <p className="text-sm text-gray-400">
+                    {reportLoading ? 'Loading…' : `${total} pts total`}
+                  </p>
+                </div>
+                <button onClick={() => setViewPicksUser(null)} className="text-gray-500 hover:text-white text-xl leading-none">✕</button>
+              </div>
+
+              {reportLoading && (
+                <div className="text-center text-gray-400 py-8">Loading picks…</div>
+              )}
+
+              {!reportLoading && report && (() => {
+                const pickedCount = matches.filter(m => m.picks[uid]?.home_goals != null).length
+                if (pickedCount === 0) {
+                  return <p className="text-gray-500 text-sm text-center py-6">No picks submitted yet.</p>
+                }
+
+                return (
+                  <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+                    {/* Group stage */}
+                    {groups.map(g => {
+                      const gMatches = matches.filter(m => m.round === 'Group' && m.group === g)
+                      const hasPicks = gMatches.some(m => m.picks[uid]?.home_goals != null)
+                      if (!hasPicks) return null
+                      return (
+                        <div key={g}>
+                          <p className="text-xs font-bold text-fifa-gold uppercase tracking-wider mb-1.5">Group {g}</p>
+                          <div className="space-y-1">
+                            {gMatches.map(m => {
+                              const pick = m.picks[uid]
+                              if (!pick || pick.home_goals == null) return null
+                              return (
+                                <div key={m.id} className="flex items-center gap-2 text-xs bg-gray-800/60 rounded px-3 py-1.5">
+                                  <span className="text-gray-400 w-28 truncate">{m.home} v {m.away}</span>
+                                  <span className="font-bold text-white tabular-nums ml-auto">
+                                    {pick.home_goals}–{pick.away_goals}
+                                  </span>
+                                  {m.result && (
+                                    <span className="text-gray-500 tabular-nums">
+                                      ({m.result.home_goals}–{m.result.away_goals})
+                                    </span>
+                                  )}
+                                  {pick.pts != null && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ptsBadge(pick.pts)}`}>
+                                      {pick.pts > 0 ? `+${pick.pts}` : '✗'}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {/* Knockout rounds */}
+                    {koRounds.map(round => {
+                      const rMatches = matches.filter(m => m.round === round)
+                      const hasPicks = rMatches.some(m => m.picks[uid]?.home_goals != null)
+                      if (!hasPicks) return null
+                      return (
+                        <div key={round}>
+                          <p className="text-xs font-bold text-fifa-gold uppercase tracking-wider mb-1.5">{koRoundMap[round]}</p>
+                          <div className="space-y-1">
+                            {rMatches.map(m => {
+                              const pick = m.picks[uid]
+                              if (!pick || pick.home_goals == null) return null
+                              return (
+                                <div key={m.id} className="flex items-center gap-2 text-xs bg-gray-800/60 rounded px-3 py-1.5">
+                                  <span className="text-gray-400 w-28 truncate">{m.home} v {m.away}</span>
+                                  <span className="font-bold text-white tabular-nums ml-auto">
+                                    {pick.home_goals}–{pick.away_goals}
+                                  </span>
+                                  {m.result && (
+                                    <span className="text-gray-500 tabular-nums">
+                                      ({m.result.home_goals}–{m.result.away_goals})
+                                    </span>
+                                  )}
+                                  {pick.pts != null && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ptsBadge(pick.pts)}`}>
+                                      {pick.pts > 0 ? `+${pick.pts}` : '✗'}
+                                    </span>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        )
+      })()}
 
       {confirmDelete && (
         <div
