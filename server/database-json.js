@@ -90,6 +90,14 @@ class DB {
     this._save()
     return user
   }
+  deleteUser(id) {
+    this._data.users = this._data.users.filter(u => u.id !== id)
+    // Also wipe their picks so no orphaned data remains
+    if (this._data.score_picks) {
+      this._data.score_picks = this._data.score_picks.filter(p => p.user_id !== id)
+    }
+    this._save()
+  }
   promoteUser(id) {
     const u = this._data.users.find(u => u.id === id)
     if (u) { u.is_admin = 1; this._save() }

@@ -63,7 +63,7 @@ export default function Admin() {
     flash('✓ User promoted to admin')
   }
 
-  const [confirmClear, setConfirmClear] = useState(null) // user object pending confirm
+  const [confirmClear, setConfirmClear] = useState(null)
   async function handleClearPicks(user) {
     try {
       const res = await admin.clearUserPicks(user.id)
@@ -72,6 +72,19 @@ export default function Admin() {
       flash(err.response?.data?.error || 'Failed to clear picks')
     } finally {
       setConfirmClear(null)
+    }
+  }
+
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  async function handleDeleteUser(user) {
+    try {
+      await admin.deleteUser(user.id)
+      setUsers(u => u.filter(x => x.id !== user.id))
+      flash(`✓ Deleted user ${user.username}`)
+    } catch (err) {
+      flash(err.response?.data?.error || 'Failed to delete user')
+    } finally {
+      setConfirmDelete(null)
     }
   }
 
@@ -689,9 +702,42 @@ export default function Admin() {
                 >
                   Clear Picks
                 </button>
+                {!u.is_admin && (
+                  <button
+                    onClick={() => setConfirmDelete(u)}
+                    className="text-xs bg-red-950/60 hover:bg-red-900/80 text-red-400 border border-red-900/60 px-2 py-1 rounded-lg"
+                  >
+                    🗑 Delete
+                  </button>
+                )}
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div className="card w-full max-w-sm border border-red-900/60" onClick={e => e.stopPropagation()}>
+            <h3 className="font-semibold text-red-400 mb-2">Delete {confirmDelete.username}?</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              This permanently deletes the account and all their picks. This cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDelete(null)} className="btn-secondary text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteUser(confirmDelete)}
+                className="bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg text-sm"
+              >
+                Yes, delete permanently
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

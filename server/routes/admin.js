@@ -83,6 +83,15 @@ router.post('/promote', requireAdmin, (req, res) => {
   res.json({ success: true })
 })
 
+router.delete('/users/:user_id', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  if (user.is_admin) return res.status(400).json({ error: 'Cannot delete an admin account' })
+  db.deleteUser(user_id)
+  res.json({ success: true, username: user.username })
+})
+
 router.get('/users', requireAdmin, (req, res) => {
   res.json(db.getAllUsers().map(u => ({
     id: u.id, username: u.username, is_admin: u.is_admin, created_at: u.created_at,

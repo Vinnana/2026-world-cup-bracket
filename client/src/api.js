@@ -138,6 +138,9 @@ export const admin = {
 
   clearUserPicks: (user_id) =>
     api.delete(`/admin/user-picks/${user_id}`),
+
+  deleteUser: (user_id) =>
+    api.delete(`/admin/users/${user_id}`),
 };
 
 export default api;
