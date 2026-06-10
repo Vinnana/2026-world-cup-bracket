@@ -68,7 +68,10 @@ export default function Leaderboard() {
                         {entry.username}
                         {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
                       </span>
-                      <span className="text-xs text-green-400">✓ submitted</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{entry.picks_count} picks</span>
+                        <span className="text-xs text-green-400">✓</span>
+                      </div>
                     </div>
                   )
                 })}

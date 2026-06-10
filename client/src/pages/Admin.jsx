@@ -4,6 +4,7 @@ import PicksReport from '../components/PicksReport'
 
 // ── Participant roster (from WhatsApp group) ──────────────────────────────────
 const ROSTER = [
+  'Suyesh',       // username: sk
   'Adya Mishra',
   'Aashish Lohani',
   'Avash Lohani',
@@ -38,9 +39,31 @@ const ROSTER = [
 // Normalize: lowercase, strip spaces/dots/underscores/hyphens
 const N = s => s.toLowerCase().replace(/[\s._\-]/g, '')
 
+// Manual overrides for usernames that can't be auto-matched by name
+// Key: normalized username  →  Value: roster name (exact string from ROSTER)
+const MANUAL_OVERRIDES = {
+  sk: 'Suyesh',
+}
+
 function buildRosterMatches(roster, appUsers, leaderboard) {
   // Admins don't pick — exclude them from matching and unmatched list
   appUsers = appUsers.filter(u => !u.is_admin)
+
+  const lbMap = {}
+  for (const e of leaderboard) lbMap[e.user_id] = e
+
+  const matchedIds = new Set()
+
+  // Apply manual overrides first — these win over auto-matching
+  const manualMatchMap = {}  // roster name → { user, lb }
+  for (const u of appUsers) {
+    const nu = N(u.username)
+    if (MANUAL_OVERRIDES[nu]) {
+      manualMatchMap[MANUAL_OVERRIDES[nu]] = { user: u, lb: lbMap[u.id] }
+      matchedIds.add(u.id)
+    }
+  }
+
   // Pre-count shared first and last names across the roster
   const firstCount = {}, lastCount = {}
   for (const name of roster) {
@@ -51,12 +74,12 @@ function buildRosterMatches(roster, appUsers, leaderboard) {
     if (l) lastCount[l] = (lastCount[l] || 0) + 1
   }
 
-  const lbMap = {}
-  for (const e of leaderboard) lbMap[e.user_id] = e
-
-  const matchedIds = new Set()
-
   const results = roster.map(name => {
+    // Manual override takes priority
+    if (manualMatchMap[name]) {
+      return { name, match: manualMatchMap[name], confidence: 'high' }
+    }
+
     const parts   = name.split(' ')
     const normFull  = N(name)
     const normFirst = N(parts[0])
