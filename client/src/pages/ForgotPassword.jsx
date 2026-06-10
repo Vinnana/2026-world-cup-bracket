@@ -9,8 +9,8 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    auth.users()
-      .then(res => setAdmins(res.data.filter(u => u.is_admin).map(u => u.username)))
+    auth.admins()
+      .then(res => setAdmins(res.data.map(u => u.username)))
       .catch(() => {})
   }, [])
 

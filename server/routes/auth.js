@@ -17,7 +17,7 @@ router.post('/register', async (req, res) => {
   const password_hash = await bcrypt.hash(password, 10)
   const user = db.createUser({ username: username.trim(), password_hash })
   const payload = { id: user.id, username: user.username, is_admin: user.is_admin }
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' })
   res.json({ token, user: payload })
 })
 
@@ -27,13 +27,19 @@ router.post('/login', async (req, res) => {
   const valid = await bcrypt.compare(req.body.password, user.password_hash)
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' })
   const payload = { id: user.id, username: user.username, is_admin: user.is_admin }
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' })
   res.json({ token, user: payload })
 })
 
 
-router.get('/users', (req, res) => {
-  res.json(db.getAllUsers().map(u => ({ id: u.id, username: u.username, is_admin: u.is_admin })))
+// Returns only admin usernames — used by the forgot-password page so users
+// know who to contact. Does NOT expose the full user list or non-admin accounts.
+router.get('/admins', (req, res) => {
+  res.json(
+    db.getAllUsers()
+      .filter(u => u.is_admin)
+      .map(u => ({ username: u.username }))
+  )
 })
 
 // Change your own password (must supply current password).

@@ -40,7 +40,7 @@ export const auth = {
   login: (username, password) =>
     api.post('/auth/login', { username, password }),
 
-  users: () => api.get('/auth/users'),
+  admins: () => api.get('/auth/admins'),
 
   changePassword: (current_password, new_password) =>
     api.post('/auth/change-password', { current_password, new_password }),

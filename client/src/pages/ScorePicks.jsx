@@ -413,6 +413,16 @@ export default function ScorePicks() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* Identity banner — always visible so users on shared devices know whose account this is */}
+      <div className="flex items-center gap-2 mb-4 bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2 text-xs text-gray-400">
+        <span>👤</span>
+        <span>Signed in as <span className="text-white font-semibold">{user?.username}</span></span>
+        <span className="ml-auto text-gray-600">Not you?</span>
+        <a href="/login" className="text-fifa-gold hover:underline font-medium" onClick={() => { localStorage.removeItem('wc2026_token'); localStorage.removeItem('wc2026_user') }}>
+          Switch account
+        </a>
+      </div>
+
       {/* Header */}
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
