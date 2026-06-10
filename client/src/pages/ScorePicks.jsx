@@ -1,7 +1,19 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, forwardRef } from 'react'
 import { picks as picksApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
+
+/**
+ * Compact name for narrow screens.
+ * "South Africa" → "S. Africa"   "Bosnia and Herzegovina" → "B. Herzegovina"
+ * Single-word or short names are returned as-is.
+ */
+function shortName(name) {
+  if (!name) return ''
+  const words = name.trim().split(/\s+/)
+  if (words.length === 1 || name.length <= 10) return name
+  return words[0][0].toUpperCase() + '. ' + words[words.length - 1]
+}
 
 /** Score label helpers */
 function ptsColor(pts) {
@@ -20,8 +32,18 @@ const ROUND_LABELS = {
   Final: 'Final',
 }
 
-/** Single match score-prediction row */
-function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
+/**
+ * Single match score-prediction row.
+ * The forwarded ref attaches to the HOME input so parent GroupSection/KnockoutRound
+ * can focus it programmatically for cross-match auto-advance.
+ * `onAdvance` is called after the away score is filled — the parent focuses the next row.
+ */
+const MatchRow = forwardRef(function MatchRow(
+  { match, pick, result, locked, onSave, teamOverride, onAdvance },
+  homeRef
+) {
+  const awayRef = useRef(null)
+
   const displayHome = teamOverride?.home || (typeof match.home === 'string' ? match.home : null)
   const displayAway = teamOverride?.away || (typeof match.away === 'string' ? match.away : null)
 
@@ -53,23 +75,46 @@ function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
   }
   const pts = calcPts()
 
+  function doSave(hg, ag) {
+    onSave(match.id, hg, ag)
+    setDirty(false)
+    setFlash(true)
+    setTimeout(() => setFlash(false), 1000)
+  }
+
   function handleChange(side, val) {
     if (locked) return
     const clean = val.replace(/[^0-9]/g, '').slice(0, 2)
-    if (side === 'home') setHomeVal(clean)
-    else setAwayVal(clean)
-    setDirty(true)
+
+    if (side === 'home') {
+      setHomeVal(clean)
+      setDirty(true)
+      // Auto-advance to away input as soon as a digit is entered
+      if (clean.length >= 1) {
+        awayRef.current?.focus()
+        awayRef.current?.select()
+      }
+    } else {
+      setAwayVal(clean)
+      // When away is filled and home already has a value, save immediately
+      // and advance to the next match row
+      if (clean.length >= 1 && homeVal !== '') {
+        const hg = parseInt(homeVal), ag = parseInt(clean)
+        if (!isNaN(hg) && !isNaN(ag)) doSave(hg, ag)
+        if (onAdvance) setTimeout(onAdvance, 30)
+      } else {
+        setDirty(true)
+      }
+    }
   }
 
+  // Fallback save on blur (handles manual tabbing / clicking away mid-entry)
   function handleBlur() {
     if (!dirty || locked) return
     if (homeVal === '' || awayVal === '') return
     const hg = parseInt(homeVal), ag = parseInt(awayVal)
     if (isNaN(hg) || isNaN(ag)) return
-    onSave(match.id, hg, ag)
-    setDirty(false)
-    setFlash(true)
-    setTimeout(() => setFlash(false), 1000)
+    doSave(hg, ag)
   }
 
   const hasPick = homeVal !== '' && awayVal !== ''
@@ -92,9 +137,7 @@ function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
         ) : (
           <>
             <span className="text-xs text-gray-200 truncate text-right hidden sm:block">{displayHome}</span>
-            <span className="text-xs text-gray-200 truncate text-right sm:hidden">
-              {displayHome?.split(' ').slice(-1)[0]}
-            </span>
+            <span className="text-xs text-gray-200 truncate text-right sm:hidden">{shortName(displayHome)}</span>
             <span className="text-sm flex-shrink-0">{getFlag(displayHome)}</span>
           </>
         )}
@@ -103,6 +146,7 @@ function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
       {/* Score inputs */}
       <div className="flex items-center gap-1 flex-shrink-0">
         <input
+          ref={homeRef}
           type="text"
           inputMode="numeric"
           maxLength={2}
@@ -121,6 +165,7 @@ function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
         />
         <span className="text-gray-500 text-xs font-semibold">–</span>
         <input
+          ref={awayRef}
           type="text"
           inputMode="numeric"
           maxLength={2}
@@ -144,9 +189,7 @@ function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
           <>
             <span className="text-sm flex-shrink-0">{getFlag(displayAway)}</span>
             <span className="text-xs text-gray-200 truncate hidden sm:block">{displayAway}</span>
-            <span className="text-xs text-gray-200 truncate sm:hidden">
-              {displayAway?.split(' ').slice(-1)[0]}
-            </span>
+            <span className="text-xs text-gray-200 truncate sm:hidden">{shortName(displayAway)}</span>
           </>
         )}
       </div>
@@ -170,11 +213,13 @@ function MatchRow({ match, pick, result, locked, onSave, teamOverride }) {
       </div>
     </div>
   )
-}
+})
 
 /** Group accordion */
 function GroupSection({ letter, matches, picks, results, locked, onSave, teamOverrides }) {
   const [open, setOpen] = useState(false)
+  // One ref per match row, pointing at each row's home input
+  const rowRefs = useRef([])
 
   const groupPts = matches.reduce((sum, m) => {
     const pick = picks[m.id]
@@ -222,15 +267,19 @@ function GroupSection({ letter, matches, picks, results, locked, onSave, teamOve
 
       {open && (
         <div className="bg-gray-900/40 divide-y divide-gray-800/50">
-          {matches.map(m => (
+          {matches.map((m, i) => (
             <MatchRow
               key={m.id}
+              ref={el => { rowRefs.current[i] = el }}
               match={m}
               pick={picks[m.id]}
               result={results[m.id]}
               locked={locked}
               onSave={onSave}
               teamOverride={teamOverrides?.[m.id]}
+              onAdvance={i < matches.length - 1
+                ? () => { rowRefs.current[i + 1]?.focus(); rowRefs.current[i + 1]?.select() }
+                : undefined}
             />
           ))}
         </div>
@@ -241,19 +290,24 @@ function GroupSection({ letter, matches, picks, results, locked, onSave, teamOve
 
 /** Knockout round section */
 function KnockoutRound({ label, matches, picks, results, locked, onSave, teamOverrides }) {
+  const rowRefs = useRef([])
   return (
     <div className="mb-4">
       <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">{label}</h3>
       <div className="space-y-1">
-        {matches.map(m => (
+        {matches.map((m, i) => (
           <MatchRow
             key={m.id}
+            ref={el => { rowRefs.current[i] = el }}
             match={m}
             pick={picks[m.id]}
             result={results[m.id]}
             locked={locked}
             onSave={onSave}
             teamOverride={teamOverrides?.[m.id]}
+            onAdvance={i < matches.length - 1
+              ? () => { rowRefs.current[i + 1]?.focus(); rowRefs.current[i + 1]?.select() }
+              : undefined}
           />
         ))}
       </div>
@@ -389,7 +443,7 @@ export default function ScorePicks() {
       ) : (
         <div className="mb-4 flex items-center gap-2 bg-green-900/20 border border-green-800/40 text-green-400 rounded-lg px-4 py-2.5 text-sm">
           <span>🟢</span>
-          <span>Picks open — scores auto-save as you type and tab away</span>
+          <span>Picks open — type a score and cursor auto-advances, saves on completion</span>
           {statusMsg && <span className="ml-auto text-xs font-medium text-green-300">{statusMsg}</span>}
         </div>
       )}
@@ -489,7 +543,7 @@ export default function ScorePicks() {
       {/* Bottom hint */}
       {!locked && (
         <p className="text-xs text-gray-600 mt-6 text-center">
-          Scores save automatically when you click away from an input field
+          Type home score → cursor jumps to away → saves and moves to next match automatically
         </p>
       )}
     </div>
