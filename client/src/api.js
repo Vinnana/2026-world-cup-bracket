@@ -8,12 +8,29 @@ const api = axios.create({
   baseURL: `${API_BASE}/api`
 });
 
-// attach token automatically
+// Attach token automatically
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('wc2026_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+// Auto-logout on 401 — stale/invalid token means the session is dead.
+// Don't intercept 401s from login/register (those are wrong-password errors, not session issues).
+api.interceptors.response.use(
+  res => res,
+  err => {
+    const url = err.config?.url || '';
+    const isAuthCall = url.includes('/auth/login') || url.includes('/auth/register');
+    if (err.response?.status === 401 && !isAuthCall && localStorage.getItem('wc2026_token')) {
+      localStorage.removeItem('wc2026_token');
+      localStorage.removeItem('wc2026_user');
+      // Full reload clears all React state and sends user to login
+      window.location.href = '/login';
+    }
+    return Promise.reject(err);
+  }
+);
 
 /* ---------------- AUTH ---------------- */
 export const auth = {
