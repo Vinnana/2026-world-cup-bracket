@@ -1,9 +1,12 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DB_PATH = path.join(__dirname, 'bracket.json')
+const __dirname  = path.dirname(fileURLToPath(import.meta.url))
+// Local fallback (dev / no disk configured)
+const BUNDLED_PATH = path.join(__dirname, 'bracket.json')
+// On Render: set DB_PATH=/data/bracket.json and attach a Persistent Disk at /data
+const DB_PATH = process.env.DB_PATH || BUNDLED_PATH
 
 function defaults() {
   return {
@@ -25,8 +28,32 @@ function defaults() {
 }
 
 function load() {
-  if (!existsSync(DB_PATH)) return defaults()
-  try { return JSON.parse(readFileSync(DB_PATH, 'utf8')) } catch { return defaults() }
+  // Ensure parent directory exists (important when DB_PATH points to a mounted disk)
+  const dir = path.dirname(DB_PATH)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+
+  if (!existsSync(DB_PATH)) {
+    // First boot on a fresh persistent disk — seed from the bundled bracket.json
+    // so existing users / settings are preserved without a full redeploy.
+    if (DB_PATH !== BUNDLED_PATH && existsSync(BUNDLED_PATH)) {
+      try {
+        const seed = readFileSync(BUNDLED_PATH, 'utf8')
+        writeFileSync(DB_PATH, seed)
+        console.log(`[db] Seeded ${DB_PATH} from bundled bracket.json`)
+        return JSON.parse(seed)
+      } catch (e) {
+        console.warn('[db] Seed failed, starting fresh:', e.message)
+      }
+    }
+    return defaults()
+  }
+
+  try {
+    return JSON.parse(readFileSync(DB_PATH, 'utf8'))
+  } catch (e) {
+    console.warn('[db] Could not parse DB file, starting fresh:', e.message)
+    return defaults()
+  }
 }
 
 function save(data) {
