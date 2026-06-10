@@ -112,9 +112,16 @@ export async function seedPdaiPicks(db) {
   }
 
   const existing = db.getScorePicksByUser(user.id)
-  if (existing.length > 0) {
-    console.log(`[seed:pdai] Already has ${existing.length} picks — skipping`)
+
+  if (existing.length === PICKS.length) {
+    console.log(`[seed:pdai] Already has all ${PICKS.length} picks — skipping`)
     return
+  }
+
+  // Incomplete or empty — clear whatever is there and re-seed the full set
+  if (existing.length > 0) {
+    console.log(`[seed:pdai] Found only ${existing.length}/${PICKS.length} picks — clearing and re-seeding`)
+    db.deletePicksByUser(user.id)
   }
 
   for (const pick of PICKS) {
