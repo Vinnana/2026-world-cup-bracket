@@ -692,6 +692,17 @@ export default function Admin() {
                       <span className="text-purple-400 font-bold">{lastStatus.knockout?.length || 0}</span>
                       <span className="text-gray-300">knockout results updated</span>
                     </div>
+                    {lastStatus.rateLimit?.remaining != null && (
+                      <div className="flex items-center gap-2">
+                        <span className={lastStatus.rateLimit.remaining <= 2 ? 'text-yellow-400 font-bold' : 'text-gray-400 font-bold'}>
+                          {lastStatus.rateLimit.remaining}
+                        </span>
+                        <span className="text-gray-300">API requests left this minute</span>
+                        {lastStatus.rateLimit.remaining <= 2 && (
+                          <span className="text-yellow-300 ml-1">⚠ auto-throttle active</span>
+                        )}
+                      </div>
+                    )}
                     {lastStatus.unmatched?.length > 0 && (
                       <div className="pt-1 border-t border-gray-700">
                         <p className="text-yellow-400 font-medium">⚠ Needs manual score entry:</p>
