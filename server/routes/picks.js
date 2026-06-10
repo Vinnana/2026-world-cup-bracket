@@ -115,6 +115,7 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
   const computedScores = computeAllScores(allPicks, allScores)
 
   const leaderboard = users
+    .filter(u => !u.is_admin)   // admins don't participate in picks
     .map(u => ({
       user_id: u.id,
       username: u.username,

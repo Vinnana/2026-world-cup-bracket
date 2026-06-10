@@ -4,7 +4,6 @@ import PicksReport from '../components/PicksReport'
 
 // ── Participant roster (from WhatsApp group) ──────────────────────────────────
 const ROSTER = [
-  'Suyesh',
   'Adya Mishra',
   'Aashish Lohani',
   'Avash Lohani',
@@ -40,6 +39,8 @@ const ROSTER = [
 const N = s => s.toLowerCase().replace(/[\s._\-]/g, '')
 
 function buildRosterMatches(roster, appUsers, leaderboard) {
+  // Admins don't pick — exclude them from matching and unmatched list
+  appUsers = appUsers.filter(u => !u.is_admin)
   // Pre-count shared first and last names across the roster
   const firstCount = {}, lastCount = {}
   for (const name of roster) {
