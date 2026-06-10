@@ -124,6 +124,40 @@ function buildRosterMatches(roster, appUsers, leaderboard) {
   return { results, unmatched }
 }
 
+// ── Mountain Time helpers (MDT = UTC−6, active during the World Cup in Jun–Jul) ─
+const MDT_OFFSET_H = -6
+
+/** "YYYY-MM-DDTHH:mm" (MDT input value) → "YYYY-MM-DDTHH:mm-06:00" (timezone-aware ISO) */
+function mtToISO(local) {
+  if (!local) return ''
+  return `${local}-06:00`
+}
+
+/** Stored ISO string → "YYYY-MM-DDTHH:mm" in MDT (for datetime-local input) */
+function isoToMT(iso) {
+  if (!iso) return ''
+  try {
+    const date = new Date(iso)
+    if (isNaN(date.getTime())) return iso.slice(0, 16)  // fallback: strip TZ
+    const mdtMs = date.getTime() + MDT_OFFSET_H * 3_600_000
+    const d = new Date(mdtMs)
+    const pad = n => String(n).padStart(2, '0')
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  } catch { return '' }
+}
+
+/** Format a stored ISO string for display in Mountain Time */
+function formatMT(iso) {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    })
+  } catch { return iso }
+}
+
 export default function Admin() {
   const [settings, setSettings] = useState({})
   const [groups, setGroups] = useState({})
@@ -272,9 +306,11 @@ export default function Admin() {
   const [scoreRound,      setScoreRound]      = useState('group_A')
   const [scoreForm,       setScoreForm]       = useState({})  // { match_id: { home: '', away: '', ht: '', at: '' } }
   const [allGroupMatches, setAllGroupMatches] = useState({})  // { A: [...], B: [...] }
-  const [picksLocked,     setPicksLocked]     = useState(false)
-  const [picksLockTime,   setPicksLockTime]   = useState('')
-  const [knockoutOpen,    setKnockoutOpen]    = useState(false)
+  const [picksLocked,          setPicksLocked]          = useState(false)
+  const [effectivePicksLocked, setEffectivePicksLocked] = useState(false)
+  const [picksLockTime,        setPicksLockTime]        = useState('')  // MDT input value
+  const [savedPicksLockTime,   setSavedPicksLockTime]   = useState('')  // stored ISO string
+  const [knockoutOpen,         setKnockoutOpen]         = useState(false)
 
   async function loadMatchScores() {
     const res = await admin.matchScores()
@@ -309,19 +345,52 @@ export default function Admin() {
     loadMatchScores()
   }, [])
 
-  // Sync picks lock settings from main settings load
+  // Sync picks lock settings from main settings load (and from 30s poll)
   useEffect(() => {
     if (settings.picks_locked !== undefined) {
       setPicksLocked(settings.picks_locked === 'true')
-      setPicksLockTime(settings.picks_lock_time || '')
+      setEffectivePicksLocked(!!settings.effective_picks_locked)
+      const stored = settings.picks_lock_time || ''
+      setSavedPicksLockTime(stored)
+      setPicksLockTime(isoToMT(stored))
       setKnockoutOpen(settings.knockout_picks_open === 'true')
     }
-  }, [settings.picks_locked, settings.picks_lock_time, settings.knockout_picks_open])
+  }, [settings.picks_locked, settings.picks_lock_time, settings.knockout_picks_open, settings.effective_picks_locked])
+
+  // Poll the effective lock status every 30 s while the picks tab is open
+  useEffect(() => {
+    if (tab !== 'picks') return
+    const poll = async () => {
+      try {
+        const s = await admin.settings()
+        setSettings(prev => ({ ...prev, ...s.data }))
+      } catch { /* network hiccup — ignore */ }
+    }
+    const iv = setInterval(poll, 30_000)
+    return () => clearInterval(iv)
+  }, [tab])
 
   async function handlePicksLock(locked) {
-    await admin.picksLock(locked, picksLockTime)
+    const lockISO = mtToISO(picksLockTime)
+    await admin.picksLock(locked, lockISO)
     setPicksLocked(locked)
+    setEffectivePicksLocked(locked)
+    setSavedPicksLockTime(lockISO)
     flash(locked ? '🔒 Score picks locked' : '🔓 Score picks unlocked')
+  }
+
+  async function handleSaveLockSchedule() {
+    const lockISO = mtToISO(picksLockTime)
+    await admin.picksSchedule(lockISO)
+    setSavedPicksLockTime(lockISO)
+    flash('⏱ Auto-lock scheduled')
+  }
+
+  async function handleClearLockSchedule() {
+    await admin.picksSchedule('')
+    setSavedPicksLockTime('')
+    setPicksLockTime('')
+    flash('Auto-lock schedule cleared')
   }
 
   async function handleKnockoutOpen(open) {
@@ -560,41 +629,84 @@ export default function Admin() {
       {tab === 'picks' && (
         <div className="space-y-4">
           {/* Phase 1 — Group Stage picks */}
-          <div className="card space-y-3">
+          <div className="card space-y-4">
             <h3 className="font-semibold text-white">Phase 1 — Group Stage Picks</h3>
             <p className="text-sm text-gray-400">
               Lock picks before the first match kicks off. After locking, players
               can still see their own picks and the leaderboard — but can't change them.
             </p>
+
+            {/* Live status — polls every 30 s */}
             <p className="text-sm">
               Status:{' '}
-              <span className={picksLocked ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
-                {picksLocked ? '🔒 Locked' : '🔓 Open'}
+              <span className={effectivePicksLocked ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
+                {effectivePicksLocked ? '🔒 Locked' : '🔓 Open'}
               </span>
+              {!picksLocked && effectivePicksLocked && (
+                <span className="ml-2 text-xs text-yellow-400">(triggered by schedule)</span>
+              )}
             </p>
-            <div>
-              <label className="block text-sm text-gray-400 mb-1">Auto-lock at (optional)</label>
-              <input
-                type="datetime-local"
-                className="input"
-                value={picksLockTime}
-                onChange={e => setPicksLockTime(e.target.value)}
-              />
+
+            {/* Auto-lock schedule */}
+            <div className="space-y-2 bg-gray-800/40 rounded-lg p-3">
+              <label className="block text-sm font-medium text-gray-200">
+                ⏱ Auto-lock schedule
+                <span className="ml-2 text-xs font-normal text-gray-400">Mountain Time (MDT · UTC−6)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="datetime-local"
+                  className="input flex-1"
+                  value={picksLockTime}
+                  onChange={e => setPicksLockTime(e.target.value)}
+                  disabled={effectivePicksLocked}
+                />
+              </div>
+              {picksLockTime && (
+                <p className="text-xs text-gray-400">
+                  → {formatMT(mtToISO(picksLockTime))}
+                </p>
+              )}
+              {savedPicksLockTime && (
+                <p className="text-xs text-yellow-300 flex items-center gap-1">
+                  <span>⏱</span>
+                  <span>Scheduled: {formatMT(savedPicksLockTime)}</span>
+                </p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleSaveLockSchedule}
+                  disabled={!picksLockTime || effectivePicksLocked}
+                  className="bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 text-white text-sm font-semibold px-3 py-1.5 rounded-lg"
+                >
+                  Save Schedule
+                </button>
+                {savedPicksLockTime && !effectivePicksLocked && (
+                  <button
+                    onClick={handleClearLockSchedule}
+                    className="bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm px-3 py-1.5 rounded-lg"
+                  >
+                    Clear Schedule
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex gap-3">
+
+            {/* Manual override */}
+            <div className="flex gap-3 pt-1 border-t border-gray-800">
               <button
                 onClick={() => handlePicksLock(true)}
-                disabled={picksLocked}
+                disabled={effectivePicksLocked}
                 className="bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
               >
-                Lock Picks
+                Lock Now
               </button>
               <button
                 onClick={() => handlePicksLock(false)}
-                disabled={!picksLocked}
+                disabled={!effectivePicksLocked}
                 className="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
               >
-                Unlock Picks
+                Unlock
               </button>
             </div>
           </div>

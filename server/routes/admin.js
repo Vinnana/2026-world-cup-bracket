@@ -10,7 +10,13 @@ import { runResultsSync, isConfigured, activeProvider } from '../resultsFetcher.
 const router = Router()
 
 router.get('/settings', requireAdmin, (req, res) => {
-  res.json({ ...db.getAllSettings(), api_configured: isConfigured(), results_provider: activeProvider() })
+  const settings = db.getAllSettings()
+  // Compute the effective lock state (same logic as isPicksLocked in picks.js)
+  const manualLocked = settings.picks_locked === 'true'
+  const lt = settings.picks_lock_time
+  const autoLocked = !!(lt && Date.now() >= new Date(lt).getTime())
+  const effective_picks_locked = manualLocked || autoLocked
+  res.json({ ...settings, api_configured: isConfigured(), results_provider: activeProvider(), effective_picks_locked })
 })
 
 // Toggle scheduled auto-fetching of results.
@@ -149,6 +155,13 @@ router.post('/picks-lock', requireAdmin, (req, res) => {
   db.setSetting('picks_locked', locked ? 'true' : 'false')
   if (lock_time !== undefined) db.setSetting('picks_lock_time', lock_time || '')
   res.json({ success: true, locked })
+})
+
+// Save/clear the auto-lock schedule without changing the locked flag
+router.post('/picks-lock-schedule', requireAdmin, (req, res) => {
+  const { lock_time } = req.body
+  db.setSetting('picks_lock_time', lock_time || '')
+  res.json({ success: true, lock_time: lock_time || '' })
 })
 
 // Clear all score picks for a specific user (admin use — e.g. mistaken pre-population)

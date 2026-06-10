@@ -135,6 +135,10 @@ export const admin = {
   picksLock: (locked, lock_time) =>
     api.post('/admin/picks-lock', { locked, lock_time }),
 
+  /** Save/clear the auto-lock schedule without immediately locking */
+  picksSchedule: (lock_time) =>
+    api.post('/admin/picks-lock-schedule', { lock_time }),
+
   knockoutOpen: (open) =>
     api.post('/admin/knockout-open', { open }),
 
