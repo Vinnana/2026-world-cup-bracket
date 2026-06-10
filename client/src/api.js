@@ -144,6 +144,9 @@ export const admin = {
 
   deleteUser: (user_id) =>
     api.delete(`/admin/users/${user_id}`),
+
+  createUser: (username, password) =>
+    api.post('/admin/create-user', { username, password }),
 };
 
 export default api;

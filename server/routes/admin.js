@@ -222,4 +222,18 @@ router.get('/report', requireAdmin, (req, res) => {
   res.json({ users: sortedUsers, matches, totals, generated_at: new Date().toISOString() })
 })
 
+// Create a user account on behalf of a participant
+router.post('/create-user', requireAdmin, async (req, res) => {
+  const { username, password } = req.body
+  if (!username?.trim()) return res.status(400).json({ error: 'Username is required' })
+  if (!password || String(password).length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' })
+
+  const trimmed = username.trim()
+  if (db.getUserByUsername(trimmed)) return res.status(409).json({ error: 'Username already taken' })
+
+  const password_hash = await bcrypt.hash(String(password), 10)
+  const user = db.createUser({ username: trimmed, password_hash })
+  res.json({ success: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } })
+})
+
 export default router

@@ -192,6 +192,27 @@ export default function Admin() {
     }
   }
 
+  // ── Create user ────────────────────────────────────────────────────────────
+  const [newUser,        setNewUser]        = useState({ username: '', password: '' })
+  const [createUserMsg,  setCreateUserMsg]  = useState(null)
+  const [createUserBusy, setCreateUserBusy] = useState(false)
+
+  async function handleCreateUser(e) {
+    e.preventDefault()
+    setCreateUserMsg(null)
+    setCreateUserBusy(true)
+    try {
+      const res = await admin.createUser(newUser.username.trim(), newUser.password)
+      setUsers(u => [...u, res.data.user].sort((a, b) => a.username.localeCompare(b.username)))
+      setCreateUserMsg({ type: 'ok', text: `✓ Account created for "${res.data.user.username}"` })
+      setNewUser({ username: '', password: '' })
+    } catch (err) {
+      setCreateUserMsg({ type: 'err', text: err.response?.data?.error || 'Failed to create user' })
+    } finally {
+      setCreateUserBusy(false)
+    }
+  }
+
   const [confirmDelete, setConfirmDelete] = useState(null)
   async function handleDeleteUser(user) {
     try {
@@ -876,7 +897,55 @@ export default function Admin() {
       })()}
 
       {tab === 'users' && (
-        <div className="card divide-y divide-gray-800">
+        <div className="space-y-4">
+
+          {/* ── Create user form ── */}
+          <div className="card">
+            <h3 className="font-semibold text-fifa-gold mb-3">Create account for a participant</h3>
+            <form onSubmit={handleCreateUser} className="flex flex-wrap gap-2 items-end">
+              <div className="flex-1 min-w-36">
+                <label className="block text-xs text-gray-400 mb-1">Username</label>
+                <input
+                  className="input"
+                  placeholder="e.g. bishesh"
+                  value={newUser.username}
+                  onChange={e => setNewUser(u => ({ ...u, username: e.target.value }))}
+                  required
+                  minLength={2}
+                />
+              </div>
+              <div className="flex-1 min-w-36">
+                <label className="block text-xs text-gray-400 mb-1">Password</label>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="temporary password"
+                  value={newUser.password}
+                  onChange={e => setNewUser(u => ({ ...u, password: e.target.value }))}
+                  required
+                  minLength={4}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={createUserBusy || !newUser.username.trim() || newUser.password.length < 4}
+                className="btn-primary whitespace-nowrap"
+              >
+                {createUserBusy ? 'Creating…' : '+ Create'}
+              </button>
+            </form>
+            {createUserMsg && (
+              <p className={`text-sm mt-2 ${createUserMsg.type === 'ok' ? 'text-green-400' : 'text-red-400'}`}>
+                {createUserMsg.text}
+              </p>
+            )}
+            <p className="text-xs text-gray-600 mt-2">
+              Share the username + password directly with the participant. They can change both after logging in.
+            </p>
+          </div>
+
+          {/* ── User list ── */}
+          <div className="card divide-y divide-gray-800">
           {users.map(u => (
             <div key={u.id} className="flex items-center justify-between py-3 gap-2 flex-wrap">
               <div>
@@ -922,6 +991,7 @@ export default function Admin() {
               </div>
             </div>
           ))}
+          </div>
         </div>
       )}
 
