@@ -1083,21 +1083,27 @@ export default function Admin() {
                               const pick = m.picks[uid]
                               if (!pick || pick.home_goals == null) return null
                               return (
-                                <div key={m.id} className="flex items-center gap-2 text-xs bg-gray-800/60 rounded px-3 py-1.5">
-                                  <span className="text-gray-400 w-28 truncate">{m.home} v {m.away}</span>
-                                  <span className="font-bold text-white tabular-nums ml-auto">
-                                    {pick.home_goals}–{pick.away_goals}
+                                <div key={m.id} className="flex items-center justify-between gap-2 text-xs bg-gray-800/60 rounded px-3 py-1.5">
+                                  <span className="text-gray-300 flex-1 min-w-0">
+                                    <span className="font-medium">{m.home}</span>
+                                    <span className="text-gray-600 mx-1">v</span>
+                                    <span className="font-medium">{m.away}</span>
                                   </span>
-                                  {m.result && (
-                                    <span className="text-gray-500 tabular-nums">
-                                      ({m.result.home_goals}–{m.result.away_goals})
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="font-bold text-white tabular-nums">
+                                      {pick.home_goals}–{pick.away_goals}
                                     </span>
-                                  )}
-                                  {pick.pts != null && (
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ptsBadge(pick.pts)}`}>
-                                      {pick.pts > 0 ? `+${pick.pts}` : '✗'}
-                                    </span>
-                                  )}
+                                    {m.result && (
+                                      <span className="text-gray-500 tabular-nums">
+                                        ({m.result.home_goals}–{m.result.away_goals})
+                                      </span>
+                                    )}
+                                    {pick.pts != null && (
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ptsBadge(pick.pts)}`}>
+                                        {pick.pts > 0 ? `+${pick.pts}` : '✗'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               )
                             })}
@@ -1119,21 +1125,27 @@ export default function Admin() {
                               const pick = m.picks[uid]
                               if (!pick || pick.home_goals == null) return null
                               return (
-                                <div key={m.id} className="flex items-center gap-2 text-xs bg-gray-800/60 rounded px-3 py-1.5">
-                                  <span className="text-gray-400 w-28 truncate">{m.home} v {m.away}</span>
-                                  <span className="font-bold text-white tabular-nums ml-auto">
-                                    {pick.home_goals}–{pick.away_goals}
+                                <div key={m.id} className="flex items-center justify-between gap-2 text-xs bg-gray-800/60 rounded px-3 py-1.5">
+                                  <span className="text-gray-300 flex-1 min-w-0">
+                                    <span className="font-medium">{m.home}</span>
+                                    <span className="text-gray-600 mx-1">v</span>
+                                    <span className="font-medium">{m.away}</span>
                                   </span>
-                                  {m.result && (
-                                    <span className="text-gray-500 tabular-nums">
-                                      ({m.result.home_goals}–{m.result.away_goals})
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="font-bold text-white tabular-nums">
+                                      {pick.home_goals}–{pick.away_goals}
                                     </span>
-                                  )}
-                                  {pick.pts != null && (
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ptsBadge(pick.pts)}`}>
-                                      {pick.pts > 0 ? `+${pick.pts}` : '✗'}
-                                    </span>
-                                  )}
+                                    {m.result && (
+                                      <span className="text-gray-500 tabular-nums">
+                                        ({m.result.home_goals}–{m.result.away_goals})
+                                      </span>
+                                    )}
+                                    {pick.pts != null && (
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ptsBadge(pick.pts)}`}>
+                                        {pick.pts > 0 ? `+${pick.pts}` : '✗'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               )
                             })}
