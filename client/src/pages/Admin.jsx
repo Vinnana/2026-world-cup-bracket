@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { admin, tournament, brackets, picks as picksApi } from '../api'
+import PicksReport from '../components/PicksReport'
 
 export default function Admin() {
   const [settings, setSettings] = useState({})
@@ -204,6 +205,7 @@ export default function Admin() {
     { key: 'scores',   label: '⚽ Match Scores' },
     { key: 'sync',     label: '🔄 Live Scores API' },
     { key: 'picks',    label: '🔒 Picks Lock' },
+    { key: 'report',   label: '📊 Report' },
     { key: 'users',    label: '👥 Users' },
   ]
 
@@ -642,6 +644,8 @@ export default function Admin() {
           )}
         </div>
       )}
+
+      {tab === 'report' && <PicksReport />}
 
       {tab === 'users' && (
         <div className="card divide-y divide-gray-800">

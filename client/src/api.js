@@ -115,6 +115,9 @@ export const admin = {
 
   knockoutOpen: (open) =>
     api.post('/admin/knockout-open', { open }),
+
+  report: () =>
+    api.get('/admin/report'),
 };
 
 export default api;

@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs'
 import db from '../database.js'
 import { requireAdmin } from '../middleware/auth.js'
 import { GROUPS } from '../teams.js'
+import { ALL_MATCHES } from '../matches.js'
+import { scoreMatch } from '../scoring.js'
 import { runResultsSync, isConfigured, activeProvider } from '../resultsFetcher.js'
 
 const router = Router()
@@ -145,6 +147,59 @@ router.post('/knockout-open', requireAdmin, (req, res) => {
   const { open } = req.body
   db.setSetting('knockout_picks_open', open ? 'true' : 'false')
   res.json({ success: true, open })
+})
+
+// ── Comprehensive picks report (admin only) ───────────────────────────────────
+router.get('/report', requireAdmin, (req, res) => {
+  const allPicks  = db.getAllScorePicks()
+  const allScores = db.getAllMatchScores()
+  const users     = db.getAllUsers()
+
+  // Build fast lookup maps
+  const pickMap  = {}  // { match_id: { user_id: { home_goals, away_goals } } }
+  for (const p of allPicks) {
+    if (!pickMap[p.match_id]) pickMap[p.match_id] = {}
+    pickMap[p.match_id][p.user_id] = { home_goals: p.home_goals, away_goals: p.away_goals }
+  }
+  const scoreMap = {}
+  for (const s of allScores) scoreMap[s.match_id] = s
+
+  // Build per-match report rows
+  const matches = ALL_MATCHES.map(m => {
+    const result = scoreMap[m.id] || null
+    const userPicks = {}
+    for (const u of users) {
+      const pick = pickMap[m.id]?.[u.id]
+      if (!pick) { userPicks[u.id] = null; continue }
+      const pts = result ? scoreMatch(pick, result) : null
+      userPicks[u.id] = { home_goals: pick.home_goals, away_goals: pick.away_goals, pts }
+    }
+    return {
+      id: m.id, no: m.no, round: m.round, group: m.group || null,
+      home: typeof m.home === 'string' ? m.home : (result?.home_team || 'TBD'),
+      away: typeof m.away === 'string' ? m.away : (result?.away_team || 'TBD'),
+      result: result && result.home_goals != null
+        ? { home_goals: result.home_goals, away_goals: result.away_goals }
+        : null,
+      picks: userPicks,
+    }
+  })
+
+  // Totals per user
+  const totals = {}
+  for (const u of users) {
+    totals[u.id] = matches.reduce((sum, m) => {
+      const p = m.picks[u.id]
+      return sum + (p?.pts != null ? p.pts : 0)
+    }, 0)
+  }
+
+  // Return users sorted by total descending (= leaderboard order)
+  const sortedUsers = [...users]
+    .sort((a, b) => (totals[b.id] || 0) - (totals[a.id] || 0))
+    .map(u => ({ id: u.id, username: u.username }))
+
+  res.json({ users: sortedUsers, matches, totals, generated_at: new Date().toISOString() })
 })
 
 export default router
