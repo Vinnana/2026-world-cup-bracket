@@ -280,10 +280,11 @@ async function fetchFromProvider() {
 // ─── Processing: match scores → match_scores table (score-prediction system) ─
 
 export async function processMatchScores(db, matches, summary) {
-  const processed     = []
-  const unmatched     = []
-  const skipped_teams = new Set()   // API team names we couldn't map to our list
-  let   api_finished  = 0
+  const processed           = []
+  const unmatched           = []
+  const skipped_teams       = new Set()   // API team names we couldn't map to our list
+  const finished_no_score   = []          // FINISHED matches whose score fields were null
+  let   api_finished        = 0
 
   summary.api_total = matches.length   // how many matches the API returned at all
 
@@ -293,7 +294,12 @@ export async function processMatchScores(db, matches, summary) {
     api_finished++
 
     const hGoals = m.score?.home, aGoals = m.score?.away
-    if (hGoals == null || aGoals == null) continue
+    if (hGoals == null || aGoals == null) {
+      // Score fields are null even though the match is FINISHED — common on free
+      // tier APIs when goal data isn't included in the basic plan.
+      finished_no_score.push(`${m.homeTeam?.name ?? '?'} vs ${m.awayTeam?.name ?? '?'}`)
+      continue
+    }
 
     const home = mapTeam(m.homeTeam?.name)
     const away = mapTeam(m.awayTeam?.name)
@@ -325,10 +331,11 @@ export async function processMatchScores(db, matches, summary) {
     }
   }
 
-  summary.api_finished  = api_finished
-  summary.skipped_teams = [...skipped_teams]
-  summary.scores        = processed
-  summary.unmatched     = unmatched
+  summary.api_finished       = api_finished
+  summary.skipped_teams      = [...skipped_teams]
+  summary.finished_no_score  = finished_no_score   // FINISHED but score was null
+  summary.scores             = processed
+  summary.unmatched          = unmatched
 }
 
 // ─── Processing: group standings → match_results (bracket / 3rd-place system) ─

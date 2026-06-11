@@ -965,6 +965,15 @@ export default function Admin() {
                       </div>
                     )}
 
+                    {/* FINISHED matches whose score fields were null (free-tier issue) */}
+                    {lastStatus.finished_no_score?.length > 0 && (
+                      <div className="pt-1 border-t border-gray-700">
+                        <p className="text-red-400 font-medium">⚠ Finished matches with no score data from API:</p>
+                        <p className="text-red-300/80 mt-0.5 font-mono">{lastStatus.finished_no_score.join(' · ')}</p>
+                        <p className="text-gray-400 mt-1">The API returned these matches as FINISHED but sent null for the goals. This usually means your football-data.org plan doesn't include live score data for this competition — check your account tier at football-data.org.</p>
+                      </div>
+                    )}
+
                     {/* Unmapped team names — means API is sending names we don't recognise */}
                     {lastStatus.skipped_teams?.length > 0 && (
                       <div className="pt-1 border-t border-gray-700">
