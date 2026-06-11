@@ -153,6 +153,7 @@ router.get('/all', optionalAuth, (req, res) => {
   for (const s of allScores) resultMap[s.match_id] = s
 
   const byUser = users
+    .filter(u => !u.is_admin)   // admins don't participate — exclude from all-picks view
     .map(u => {
       const userPicks = allPicks.filter(p => p.user_id === u.id)
       const pickMap = {}
