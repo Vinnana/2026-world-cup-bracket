@@ -915,6 +915,29 @@ export default function Admin() {
                 ) : (
                   <>
                     <p className="text-gray-400 font-semibold mb-1">Last sync results</p>
+
+                    {/* Competition / season diagnostic — helps spot if we got the wrong year's data */}
+                    {lastStatus.api_meta && (
+                      <div className="flex items-center gap-2 pb-1 mb-1 border-b border-gray-700/60">
+                        <span className="text-gray-500">Competition:</span>
+                        <span className="text-gray-200 font-mono">{lastStatus.api_meta.competition}</span>
+                        <span className="text-gray-500 ml-1">Season:</span>
+                        <span className={lastStatus.api_meta.season === '2026' ? 'text-green-400 font-mono' : 'text-red-400 font-mono font-bold'}>
+                          {lastStatus.api_meta.season}
+                        </span>
+                        {lastStatus.api_meta.season !== '2026' && (
+                          <span className="text-red-400 ml-1">⚠ wrong year!</span>
+                        )}
+                        <span className="text-gray-500 ml-1">|</span>
+                        <span className="text-gray-300">{lastStatus.api_total ?? '?'} matches returned</span>
+                        <span className="text-gray-500">(</span>
+                        <span className={lastStatus.api_finished > 0 ? 'text-green-400 font-bold' : 'text-gray-400'}>
+                          {lastStatus.api_finished ?? 0} finished
+                        </span>
+                        <span className="text-gray-500">)</span>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2">
                       <span className="text-green-400 font-bold">{lastStatus.scores?.length || 0}</span>
                       <span className="text-gray-300">match scores updated</span>
@@ -941,6 +964,15 @@ export default function Admin() {
                         )}
                       </div>
                     )}
+
+                    {/* Unmapped team names — means API is sending names we don't recognise */}
+                    {lastStatus.skipped_teams?.length > 0 && (
+                      <div className="pt-1 border-t border-gray-700">
+                        <p className="text-orange-400 font-medium">⚠ Unrecognised team names from API (need alias):</p>
+                        <p className="text-orange-300/80 mt-0.5 font-mono">{lastStatus.skipped_teams.join(', ')}</p>
+                      </div>
+                    )}
+
                     {lastStatus.unmatched?.length > 0 && (
                       <div className="pt-1 border-t border-gray-700">
                         <p className="text-yellow-400 font-medium">⚠ Needs manual score entry:</p>

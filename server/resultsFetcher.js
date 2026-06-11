@@ -145,16 +145,19 @@ export function rateLimitStatus() {
 // ─── Provider 1: football-data.org ──────────────────────────────────────────
 
 async function fetchFootballData() {
-  const token = process.env.FOOTBALL_DATA_TOKEN
+  const token  = process.env.FOOTBALL_DATA_TOKEN
   if (!token) throw new Error('FOOTBALL_DATA_TOKEN is not set.')
-  const comp    = process.env.FOOTBALL_DATA_COMPETITION || 'WC'
-  const base    = 'https://api.football-data.org/v4'
+  const comp   = process.env.FOOTBALL_DATA_COMPETITION || 'WC'
+  // Force the 2026 season so we never accidentally pull 2022 (completed) data.
+  // Override with FOOTBALL_DATA_SEASON env var if needed.
+  const season = process.env.FOOTBALL_DATA_SEASON || '2026'
+  const base   = 'https://api.football-data.org/v4'
   const headers = { 'X-Auth-Token': token }
 
   // Sequential — NOT parallel — so the second call inherits the updated rate-limit
   // state from the first response's headers before it fires.
-  const standingsRes = await httpJson(`${base}/competitions/${comp}/standings`, headers)
-  const matchesRes   = await httpJson(`${base}/competitions/${comp}/matches`,   headers)
+  const standingsRes = await httpJson(`${base}/competitions/${comp}/standings?season=${season}`, headers)
+  const matchesRes   = await httpJson(`${base}/competitions/${comp}/matches?season=${season}`,   headers)
 
   const standings = (standingsRes.standings || [])
     .filter(s => s.type === 'TOTAL' && s.group)
@@ -182,7 +185,14 @@ async function fetchFootballData() {
     },
   }))
 
-  return { standings, matches }
+  // Include competition/season metadata for diagnostics
+  const meta = {
+    competition: matchesRes.competition?.code || comp,
+    season:      matchesRes.season?.startDate?.slice(0, 4) || season,
+    total:       matches.length,
+  }
+
+  return { standings, matches, meta }
 }
 
 // ─── Provider 2: API-Football / api-sports.io ────────────────────────────────
@@ -270,18 +280,29 @@ async function fetchFromProvider() {
 // ─── Processing: match scores → match_scores table (score-prediction system) ─
 
 export async function processMatchScores(db, matches, summary) {
-  const processed = []
-  const unmatched = []
+  const processed     = []
+  const unmatched     = []
+  const skipped_teams = new Set()   // API team names we couldn't map to our list
+  let   api_finished  = 0
+
+  summary.api_total = matches.length   // how many matches the API returned at all
 
   for (const m of matches) {
     const fin = m.status === 'FINISHED' || m.status === 'AWARDED'
     if (!fin) continue
+    api_finished++
+
     const hGoals = m.score?.home, aGoals = m.score?.away
     if (hGoals == null || aGoals == null) continue
 
     const home = mapTeam(m.homeTeam?.name)
     const away = mapTeam(m.awayTeam?.name)
-    if (!home || !away) continue
+    if (!home || !away) {
+      // Track which names we couldn't resolve so the admin can see them
+      if (!home && m.homeTeam?.name) skipped_teams.add(m.homeTeam.name)
+      if (!away && m.awayTeam?.name) skipped_teams.add(m.awayTeam.name)
+      continue
+    }
 
     // Try group stage first (teams are fixed)
     const groupId = findGroupMatchId(home, away)
@@ -304,8 +325,10 @@ export async function processMatchScores(db, matches, summary) {
     }
   }
 
-  summary.scores     = processed
-  summary.unmatched  = unmatched
+  summary.api_finished  = api_finished
+  summary.skipped_teams = [...skipped_teams]
+  summary.scores        = processed
+  summary.unmatched     = unmatched
 }
 
 // ─── Processing: group standings → match_results (bracket / 3rd-place system) ─
@@ -441,7 +464,8 @@ export async function runResultsSync(db) {
     at: new Date().toISOString(),
     rateLimit: null,  // filled in after fetch
   }
-  const { standings, matches } = await fetchFromProvider()
+  const { standings, matches, meta } = await fetchFromProvider()
+  if (meta) summary.api_meta = meta                // competition/season metadata for diagnostics
   summary.rateLimit = rateLimitStatus()            // snapshot after all HTTP calls
   await processMatchScores(db, matches, summary)   // ← score-prediction system (awaited — writes must persist)
   processGroups(db, standings, summary)             // ← bracket / group standings
