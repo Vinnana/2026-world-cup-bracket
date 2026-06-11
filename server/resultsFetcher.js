@@ -95,13 +95,54 @@ function findKnockoutMatchId(home, away, db) {
   return check(db.getKnockoutResults()) || check(db.getAllMatchScores()) || null
 }
 
-// ─── Provider 1: football-data.org ──────────────────────────────────────────
+// ─── Rate-limit state (shared across all requests in a process) ─────────────
+// football-data.org headers: X-Requests-Available-Minute, X-RequestCounter-Reset
+// api-football headers:      X-RateLimit-Remaining, X-RateLimit-Reset (Unix ts)
+
+const _rl = {
+  remaining: null,   // requests left in current window (null = unknown)
+  resetAt:   null,   // Date.now()-comparable ms when the window resets
+}
+
+function _parseRateLimitHeaders(res) {
+  // football-data.org
+  const avail = res.headers.get('X-Requests-Available-Minute')
+  const reset = res.headers.get('X-RequestCounter-Reset')   // seconds until reset
+  if (avail !== null) _rl.remaining = parseInt(avail, 10)
+  if (reset !== null) _rl.resetAt   = Date.now() + parseInt(reset, 10) * 1000
+
+  // api-football / api-sports.io (fallback, different header names)
+  const afRemain = res.headers.get('X-RateLimit-Remaining')
+  const afReset  = res.headers.get('X-RateLimit-Reset')     // Unix timestamp (s)
+  if (afRemain !== null && avail === null) _rl.remaining = parseInt(afRemain, 10)
+  if (afReset  !== null && reset  === null) _rl.resetAt  = parseInt(afReset, 10) * 1000
+}
+
+async function _throttle() {
+  // If we're out of requests, sleep until the window resets (+ 200 ms buffer)
+  if (_rl.remaining !== null && _rl.remaining <= 0 && _rl.resetAt) {
+    const wait = Math.max(0, _rl.resetAt - Date.now()) + 200
+    console.log(`[resultsFetcher] Rate-limit reached — waiting ${Math.ceil(wait / 1000)}s before next request`)
+    await new Promise(r => setTimeout(r, wait))
+    _rl.remaining = null  // reset; will be filled in by the next response
+    _rl.resetAt   = null
+  }
+}
 
 async function httpJson(url, headers) {
+  await _throttle()
   const res = await fetch(url, { headers })
+  _parseRateLimitHeaders(res)
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url.split('?')[0]}`)
   return res.json()
 }
+
+// Expose current limit state so callers can include it in summaries
+export function rateLimitStatus() {
+  return { remaining: _rl.remaining, resetAt: _rl.resetAt }
+}
+
+// ─── Provider 1: football-data.org ──────────────────────────────────────────
 
 async function fetchFootballData() {
   const token = process.env.FOOTBALL_DATA_TOKEN
@@ -110,10 +151,10 @@ async function fetchFootballData() {
   const base    = 'https://api.football-data.org/v4'
   const headers = { 'X-Auth-Token': token }
 
-  const [standingsRes, matchesRes] = await Promise.all([
-    httpJson(`${base}/competitions/${comp}/standings`, headers),
-    httpJson(`${base}/competitions/${comp}/matches`,   headers),
-  ])
+  // Sequential — NOT parallel — so the second call inherits the updated rate-limit
+  // state from the first response's headers before it fires.
+  const standingsRes = await httpJson(`${base}/competitions/${comp}/standings`, headers)
+  const matchesRes   = await httpJson(`${base}/competitions/${comp}/matches`,   headers)
 
   const standings = (standingsRes.standings || [])
     .filter(s => s.type === 'TOTAL' && s.group)
@@ -169,10 +210,10 @@ async function fetchApiFootball() {
   const base   = 'https://v3.football.api-sports.io'
   const headers = { 'x-apisports-key': key }
 
-  const [standRes, fixRes] = await Promise.all([
-    httpJson(`${base}/standings?league=${league}&season=${season}`, headers),
-    httpJson(`${base}/fixtures?league=${league}&season=${season}`,  headers),
-  ])
+  // Sequential — same reason as fetchFootballData: let the first response's
+  // rate-limit headers inform whether we need to throttle before the second call.
+  const standRes = await httpJson(`${base}/standings?league=${league}&season=${season}`, headers)
+  const fixRes   = await httpJson(`${base}/fixtures?league=${league}&season=${season}`,  headers)
 
   const groupTables = standRes.response?.[0]?.league?.standings || []
   const standings = groupTables.map(table => {
@@ -228,7 +269,7 @@ async function fetchFromProvider() {
 
 // ─── Processing: match scores → match_scores table (score-prediction system) ─
 
-export function processMatchScores(db, matches, summary) {
+export async function processMatchScores(db, matches, summary) {
   const processed = []
   const unmatched = []
 
@@ -245,7 +286,7 @@ export function processMatchScores(db, matches, summary) {
     // Try group stage first (teams are fixed)
     const groupId = findGroupMatchId(home, away)
     if (groupId) {
-      db.upsertMatchScore(groupId, { home_team: home, away_team: away, home_goals: hGoals, away_goals: aGoals })
+      await db.upsertMatchScore(groupId, { home_team: home, away_team: away, home_goals: hGoals, away_goals: aGoals })
       processed.push(groupId)
       continue
     }
@@ -255,7 +296,7 @@ export function processMatchScores(db, matches, summary) {
     if (round) {
       const koId = findKnockoutMatchId(home, away, db)
       if (koId) {
-        db.upsertMatchScore(koId, { home_team: home, away_team: away, home_goals: hGoals, away_goals: aGoals })
+        await db.upsertMatchScore(koId, { home_team: home, away_team: away, home_goals: hGoals, away_goals: aGoals })
         processed.push(koId)
       } else {
         unmatched.push(`${home} vs ${away} (${round})`)
@@ -398,10 +439,12 @@ export async function runResultsSync(db) {
     groups: [], knockout: [], scores: [], unmatched: [],
     thirdsRanked: null,
     at: new Date().toISOString(),
+    rateLimit: null,  // filled in after fetch
   }
   const { standings, matches } = await fetchFromProvider()
-  processMatchScores(db, matches, summary)   // ← score-prediction system (new)
-  processGroups(db, standings, summary)       // ← bracket system (legacy)
-  processKnockout(db, matches, summary)       // ← bracket system (legacy)
+  summary.rateLimit = rateLimitStatus()            // snapshot after all HTTP calls
+  await processMatchScores(db, matches, summary)   // ← score-prediction system (awaited — writes must persist)
+  processGroups(db, standings, summary)             // ← bracket / group standings
+  processKnockout(db, matches, summary)             // ← bracket / knockout results
   return summary
 }

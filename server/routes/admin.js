@@ -119,7 +119,7 @@ router.post('/set-password', requireAdmin, async (req, res) => {
 
 // Enter or update a match score (home_goals + away_goals determine the winner).
 // Optional: home_team / away_team override for knockout matches where slots aren't resolved yet.
-router.post('/match-score', requireAdmin, (req, res) => {
+router.post('/match-score', requireAdmin, async (req, res) => {
   const { match_id, home_team, away_team, home_goals, away_goals } = req.body
   if (!match_id) return res.status(400).json({ error: 'match_id required' })
 
@@ -129,19 +129,29 @@ router.post('/match-score', requireAdmin, (req, res) => {
   if (hg !== null && (isNaN(hg) || hg < 0)) return res.status(400).json({ error: 'Invalid home_goals' })
   if (ag !== null && (isNaN(ag) || ag < 0)) return res.status(400).json({ error: 'Invalid away_goals' })
 
-  db.upsertMatchScore(match_id, {
-    home_team: home_team || undefined,
-    away_team: away_team || undefined,
-    home_goals: hg,
-    away_goals: ag,
-  })
-  res.json({ success: true })
+  try {
+    await db.upsertMatchScore(match_id, {
+      home_team: home_team || undefined,
+      away_team: away_team || undefined,
+      home_goals: hg,
+      away_goals: ag,
+    })
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[admin] match-score save error:', err.message)
+    res.status(500).json({ error: `Failed to save score: ${err.message}` })
+  }
 })
 
 // Delete a match score
-router.delete('/match-score/:match_id', requireAdmin, (req, res) => {
-  db.deleteMatchScore(req.params.match_id)
-  res.json({ success: true })
+router.delete('/match-score/:match_id', requireAdmin, async (req, res) => {
+  try {
+    await db.deleteMatchScore(req.params.match_id)
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[admin] match-score delete error:', err.message)
+    res.status(500).json({ error: `Failed to delete score: ${err.message}` })
+  }
 })
 
 // Get all match scores

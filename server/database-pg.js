@@ -345,8 +345,12 @@ export default class PgDB {
   }
 
   // ─── Match scores ─────────────────────────────────────────────────────────
+  // NOTE: upsertMatchScore and deleteMatchScore are ASYNC — they await the PG
+  // write directly so that callers can detect and surface failures.  All other
+  // write methods remain fire-and-forget via _w() because they are less
+  // critical and would require a much larger refactor to make awaitable.
 
-  upsertMatchScore(match_id, { home_team, away_team, home_goals, away_goals }) {
+  async upsertMatchScore(match_id, { home_team, away_team, home_goals, away_goals }) {
     if (!this._data.match_scores) this._data.match_scores = []
     const now      = new Date().toISOString()
     const existing = this._data.match_scores.find(s => s.match_id === match_id)
@@ -356,7 +360,7 @@ export default class PgDB {
       if (home_goals !== undefined) existing.home_goals = home_goals
       if (away_goals !== undefined) existing.away_goals = away_goals
       existing.updated_at = now
-      this._w(
+      await this._pool.query(
         `UPDATE wc_match_scores
            SET home_team  = COALESCE($1, home_team),
                away_team  = COALESCE($2, away_team),
@@ -375,9 +379,17 @@ export default class PgDB {
         played_at: now, updated_at: now,
       }
       this._data.match_scores.push(s)
-      this._w(
+      // ON CONFLICT safeguard: if a race or retry attempts the same match_id,
+      // merge rather than fail with a unique-constraint error.
+      await this._pool.query(
         `INSERT INTO wc_match_scores (id,match_id,home_team,away_team,home_goals,away_goals,played_at,updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (match_id) DO UPDATE
+           SET home_team  = COALESCE(EXCLUDED.home_team,  wc_match_scores.home_team),
+               away_team  = COALESCE(EXCLUDED.away_team,  wc_match_scores.away_team),
+               home_goals = COALESCE(EXCLUDED.home_goals, wc_match_scores.home_goals),
+               away_goals = COALESCE(EXCLUDED.away_goals, wc_match_scores.away_goals),
+               updated_at = EXCLUDED.updated_at`,
         [s.id, match_id, s.home_team, s.away_team, s.home_goals, s.away_goals, now, now]
       )
     }
@@ -391,9 +403,9 @@ export default class PgDB {
     return this._data.match_scores || []
   }
 
-  deleteMatchScore(match_id) {
+  async deleteMatchScore(match_id) {
     this._data.match_scores = (this._data.match_scores || []).filter(s => s.match_id !== match_id)
-    this._w('DELETE FROM wc_match_scores WHERE match_id=$1', [match_id])
+    await this._pool.query('DELETE FROM wc_match_scores WHERE match_id=$1', [match_id])
   }
 
   // ─── Match results ────────────────────────────────────────────────────────

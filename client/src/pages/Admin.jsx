@@ -400,17 +400,25 @@ export default function Admin() {
   }
 
   async function handleSaveMatchScore(matchId, homeGoals, awayGoals, homeTeam, awayTeam) {
-    if (homeGoals === '' || awayGoals === '') return
-    await admin.matchScore(matchId, parseInt(homeGoals), parseInt(awayGoals), homeTeam || undefined, awayTeam || undefined)
-    await loadMatchScores()
-    flash(`✓ Score saved for ${matchId}`)
+    if (homeGoals === '' || homeGoals == null || awayGoals === '' || awayGoals == null) return
+    try {
+      await admin.matchScore(matchId, parseInt(homeGoals), parseInt(awayGoals), homeTeam || undefined, awayTeam || undefined)
+      await loadMatchScores()
+      flash(`✓ Score saved for ${matchId}`)
+    } catch (err) {
+      flash(`⚠ Save failed: ${err.response?.data?.error || err.message}`)
+    }
   }
 
   async function handleDeleteMatchScore(matchId) {
-    await admin.deleteMatchScore(matchId)
-    await loadMatchScores()
-    setScoreForm(f => { const n = { ...f }; delete n[matchId]; return n })
-    flash(`✓ Score cleared for ${matchId}`)
+    try {
+      await admin.deleteMatchScore(matchId)
+      await loadMatchScores()
+      setScoreForm(f => { const n = { ...f }; delete n[matchId]; return n })
+      flash(`✓ Score cleared for ${matchId}`)
+    } catch (err) {
+      flash(`⚠ Delete failed: ${err.response?.data?.error || err.message}`)
+    }
   }
 
   const [fetching, setFetching] = useState(false)
@@ -425,9 +433,14 @@ export default function Admin() {
       const res = await admin.fetchNow()
       const s = res.data.summary
       await loadResults()
+      await loadMatchScores()   // refresh Match Scores tab with any newly synced scores
       const settingsRes = await admin.settings()
       setSettings(settingsRes.data)
-      flash(`✓ Synced — ${s.groups.length} groups, ${s.knockout.length} knockout matches`)
+      const parts = []
+      if ((s.scores?.length || 0) > 0)   parts.push(`${s.scores.length} match score${s.scores.length !== 1 ? 's' : ''}`)
+      if ((s.groups?.length || 0) > 0)   parts.push(`${s.groups.length} group${s.groups.length !== 1 ? 's' : ''}`)
+      if ((s.knockout?.length || 0) > 0) parts.push(`${s.knockout.length} knockout`)
+      flash(`✓ Synced — ${parts.length ? parts.join(', ') : 'no new results yet'}`)
     } catch (err) {
       flash(err.response?.data?.error || 'Fetch failed')
     } finally {
