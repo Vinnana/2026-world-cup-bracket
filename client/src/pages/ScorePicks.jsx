@@ -703,7 +703,7 @@ export default function ScorePicks() {
           {/* View mode toggle */}
           <div className="flex gap-1 mb-4 bg-gray-800/40 rounded-lg p-1 w-fit border border-gray-700/40">
             {[
-              ['upcoming',  '📅 Upcoming'],
+              ['upcoming',  '📅 Live & Upcoming'],
               ['completed', '✅ Completed'],
               ['group',     '🏟 By Group'],
             ].map(([key, label]) => (

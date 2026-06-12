@@ -321,7 +321,7 @@ export default function AllPicks() {
       {/* View mode toggle */}
       <div className="flex gap-1 mb-5 bg-gray-800/40 rounded-lg p-1 w-fit border border-gray-700/40">
         {[
-          ['upcoming',  '📅 Upcoming'],
+          ['upcoming',  '📅 Live & Upcoming'],
           ['completed', '✅ Completed'],
           ['player',    '👥 By Player'],
         ].map(([key, label]) => (
