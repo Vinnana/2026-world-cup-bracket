@@ -98,12 +98,16 @@ router.get('/matches', optionalAuth, (req, res) => {
     }
   }
 
+  let matchDates = {}
+  try { matchDates = JSON.parse(db.getSetting('match_dates') || '{}') } catch {}
+
   res.json({
     matches: ALL_MATCHES,
     results: resultMap,
     team_overrides: teamOverrides,
     locked: isPicksLocked(),
     knockout_open: isKnockoutOpen(),
+    match_dates: matchDates,
   })
 })
 
@@ -170,12 +174,16 @@ router.get('/all', optionalAuth, (req, res) => {
     })
     .sort((a, b) => b.total - a.total)
 
+  let matchDates = {}
+  try { matchDates = JSON.parse(db.getSetting('match_dates') || '{}') } catch {}
+
   res.json({
     users: byUser,
     locked,
     matches: ALL_MATCHES,
     results: resultMap,
     knockout_open: isKnockoutOpen(),
+    match_dates: matchDates,
   })
 })
 

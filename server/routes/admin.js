@@ -5,7 +5,7 @@ import { requireAdmin } from '../middleware/auth.js'
 import { GROUPS } from '../teams.js'
 import { ALL_MATCHES } from '../matches.js'
 import { scoreMatch } from '../scoring.js'
-import { runResultsSync, isConfigured, activeProvider } from '../resultsFetcher.js'
+import { runResultsSync, isConfigured, activeProvider, addSyncHistory } from '../resultsFetcher.js'
 
 const router = Router()
 
@@ -16,7 +16,11 @@ router.get('/settings', requireAdmin, (req, res) => {
   const lt = settings.picks_lock_time
   const autoLocked = !!(lt && Date.now() >= new Date(lt).getTime())
   const effective_picks_locked = manualLocked || autoLocked
-  res.json({ ...settings, api_configured: isConfigured(), results_provider: activeProvider(), effective_picks_locked })
+  // Parse sync_history JSON → array so the frontend can iterate directly
+  let sync_history = []
+  try { sync_history = JSON.parse(settings.sync_history || '[]') } catch {}
+  const { sync_history: _raw, ...rest } = settings
+  res.json({ ...rest, api_configured: isConfigured(), results_provider: activeProvider(), effective_picks_locked, sync_history })
 })
 
 // Toggle scheduled auto-fetching of results.
@@ -31,6 +35,7 @@ router.post('/fetch-now', requireAdmin, async (req, res) => {
     const summary = await runResultsSync(db)
     db.setSetting('last_fetch_at', summary.at)
     db.setSetting('last_fetch_status', JSON.stringify(summary))
+    addSyncHistory(db, summary)
     res.json({ success: true, summary })
   } catch (err) {
     db.setSetting('last_fetch_status', JSON.stringify({ error: err.message, at: new Date().toISOString() }))

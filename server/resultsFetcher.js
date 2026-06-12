@@ -176,6 +176,7 @@ async function fetchFootballData() {
   const matches = (matchesRes.matches || []).map(m => ({
     stage:    m.stage,
     status:   m.status,
+    utcDate:  m.utcDate || null,
     homeTeam: { name: m.homeTeam?.name },
     awayTeam: { name: m.awayTeam?.name },
     score: {
@@ -475,7 +476,40 @@ export async function runResultsSync(db) {
   if (meta) summary.api_meta = meta                // competition/season metadata for diagnostics
   summary.rateLimit = rateLimitStatus()            // snapshot after all HTTP calls
   await processMatchScores(db, matches, summary)   // ← score-prediction system (awaited — writes must persist)
+  processMatchDates(db, matches)
   processGroups(db, standings, summary)             // ← bracket / group standings
   processKnockout(db, matches, summary)             // ← bracket / knockout results
   return summary
+}
+
+export function processMatchDates(db, matches) {
+  let dateMap = {}
+  try { dateMap = JSON.parse(db.getSetting('match_dates') || '{}') } catch {}
+  let added = 0
+  for (const m of matches) {
+    if (!m.utcDate) continue
+    const home = mapTeam(m.homeTeam?.name)
+    const away = mapTeam(m.awayTeam?.name)
+    if (!home || !away) continue
+    const gId = findGroupMatchId(home, away)
+    if (gId && !dateMap[gId]) { dateMap[gId] = m.utcDate; added++ }
+  }
+  if (added > 0) db.setSetting('match_dates', JSON.stringify(dateMap))
+  return added
+}
+
+export function addSyncHistory(db, summary) {
+  let hist = []
+  try { hist = JSON.parse(db.getSetting('sync_history') || '[]') } catch {}
+  hist.unshift({
+    at:               summary.at,
+    scores:           summary.scores           || [],
+    groups:           summary.groups           || [],
+    knockout:         summary.knockout         || [],
+    api_total:        summary.api_total        ?? 0,
+    api_finished:     summary.api_finished     ?? 0,
+    finished_no_score:summary.finished_no_score|| [],
+    skipped_teams:    summary.skipped_teams    || [],
+  })
+  db.setSetting('sync_history', JSON.stringify(hist.slice(0, 20)))
 }

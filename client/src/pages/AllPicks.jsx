@@ -3,6 +3,30 @@ import { picks as picksApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
 
+/** Group matches by calendar day, sorted chronologically */
+function getScheduleDays(matches, dates) {
+  const sorted = [...matches].sort((a, b) => {
+    const da = dates[a.id] ? new Date(dates[a.id]).getTime() : 1e15
+    const db_ = dates[b.id] ? new Date(dates[b.id]).getTime() : 1e15
+    return da - db_
+  })
+  const days = [], seen = {}
+  for (const m of sorted) {
+    const iso = dates[m.id]
+    const key = iso
+      ? new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+      : 'Schedule TBD'
+    if (!seen[key]) { seen[key] = []; days.push([key, seen[key]]) }
+    seen[key].push(m)
+  }
+  return days
+}
+
+function fmtMatchTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+}
+
 function ptsColor(pts) {
   if (pts === 10) return 'bg-green-800 text-green-200'
   if (pts === 6)  return 'bg-yellow-800 text-yellow-200'
@@ -229,15 +253,18 @@ function UserRow({ userData, allMatches, results, rank, isMe }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AllPicks() {
   const { user } = useAuth()
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
+  const [data,       setData]       = useState(null)
+  const [matchDates, setMatchDates] = useState({})
+  const [viewMode,   setViewMode]   = useState('player') // 'player' | 'schedule'
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState('')
 
   useEffect(() => {
     async function load() {
       try {
         const res = await picksApi.all()
         setData(res.data)
+        setMatchDates(res.data.match_dates || {})
       } catch (err) {
         setError('Failed to load picks')
       } finally {
@@ -271,10 +298,11 @@ export default function AllPicks() {
   }
 
   const { users = [], locked, matches = [], results = {} } = data || {}
+  const groupMatches = matches.filter(m => m.round === 'Group')
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">📋 All Picks</h1>
           <p className="text-sm text-gray-400 mt-0.5">{users.length} players · click a row to expand picks</p>
@@ -288,22 +316,127 @@ export default function AllPicks() {
         </div>
       </div>
 
-      {/* Leaderboard + expandable rows */}
-      <div className="space-y-2">
-        {users.length === 0 && (
-          <p className="text-gray-500 text-center py-8">No picks submitted yet.</p>
-        )}
-        {users.map((u, i) => (
-          <UserRow
-            key={u.user_id}
-            userData={u}
-            allMatches={matches}
-            results={results}
-            rank={i + 1}
-            isMe={u.user_id === user?.id}
-          />
+      {/* View mode toggle */}
+      <div className="flex gap-1 mb-5 bg-gray-800/40 rounded-lg p-1 w-fit border border-gray-700/40">
+        {[['player', '👥 By Player'], ['schedule', '📅 Schedule']].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setViewMode(key)}
+            className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+              viewMode === key ? 'bg-fifa-gold text-gray-950' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {label}
+          </button>
         ))}
       </div>
+
+      {/* By Player view — leaderboard + expandable rows */}
+      {viewMode === 'player' && (
+        <div className="space-y-2">
+          {users.length === 0 && (
+            <p className="text-gray-500 text-center py-8">No picks submitted yet.</p>
+          )}
+          {users.map((u, i) => (
+            <UserRow
+              key={u.user_id}
+              userData={u}
+              allMatches={matches}
+              results={results}
+              rank={i + 1}
+              isMe={u.user_id === user?.id}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Schedule view — match-centric, sorted by date */}
+      {viewMode === 'schedule' && (
+        <div className="space-y-6">
+          {Object.keys(matchDates).length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <p className="text-3xl mb-3">📅</p>
+              <p className="text-sm font-medium">Match schedule not loaded yet</p>
+              <p className="text-xs text-gray-600 mt-1">Admin needs to run an API sync to load match times</p>
+            </div>
+          ) : (
+            getScheduleDays(groupMatches, matchDates).map(([dayLabel, dayMatches]) => (
+              <div key={dayLabel}>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-px bg-gray-700/60 flex-1" />
+                  <span className="text-xs font-semibold text-gray-300 px-3 py-0.5 bg-gray-800/60 rounded-full border border-gray-700/50 whitespace-nowrap">
+                    {dayLabel}
+                  </span>
+                  <div className="h-px bg-gray-700/60 flex-1" />
+                </div>
+                <div className="space-y-3">
+                  {dayMatches.map(m => {
+                    const result = results[m.id]
+                    const home = typeof m.home === 'string' ? m.home : null
+                    const away = typeof m.away === 'string' ? m.away : null
+                    const resultIn = result?.home_goals != null
+                    return (
+                      <div key={m.id} className="card py-2.5 space-y-2">
+                        {/* Match header */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {matchDates[m.id] && (
+                            <span className="text-[10px] text-gray-500 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
+                          )}
+                          <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
+                          <span className="text-sm font-semibold text-white flex-1">
+                            {home ? <>{getFlag(home)} {home}</> : 'TBD'}
+                            <span className="text-gray-500 font-normal mx-1.5">vs</span>
+                            {away ? <>{getFlag(away)} {away}</> : 'TBD'}
+                          </span>
+                          {resultIn && (
+                            <span className="text-xs font-bold text-gray-200 bg-gray-700 px-2 py-0.5 rounded tabular-nums">
+                              {result.home_goals}–{result.away_goals}
+                            </span>
+                          )}
+                        </div>
+                        {/* All players' picks for this match */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {users.map(u => {
+                            const pick = u.picks[m.id]
+                            const hasPick = pick?.home_goals != null
+                            const pts = calcPts(pick, result)
+                            return (
+                              <div
+                                key={u.user_id}
+                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${
+                                  pts === 10 ? 'bg-green-900/30 border-green-800/50' :
+                                  pts === 6  ? 'bg-yellow-900/20 border-yellow-800/40' :
+                                  pts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
+                                  pts === 0  ? 'bg-red-900/20 border-red-800/30' :
+                                  'bg-gray-800/60 border-gray-700/40'
+                                }`}
+                              >
+                                <span className="text-gray-400 text-[9px] truncate max-w-[4rem]">{u.username}</span>
+                                {hasPick ? (
+                                  <>
+                                    <span className="font-bold tabular-nums text-gray-200">{pick.home_goals}–{pick.away_goals}</span>
+                                    {pts != null && resultIn && (
+                                      <span className={`text-[9px] font-bold ${pts > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                        {pts > 0 ? `+${pts}` : '✗'}
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-gray-600 text-[9px]">–</span>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

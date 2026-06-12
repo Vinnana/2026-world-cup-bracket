@@ -34,6 +34,30 @@ const ROUND_LABELS = {
   Final: 'Final',
 }
 
+/** Group matches by calendar day, sorted chronologically */
+function getScheduleDays(matches, dates) {
+  const sorted = [...matches].sort((a, b) => {
+    const da = dates[a.id] ? new Date(dates[a.id]).getTime() : 1e15
+    const db_ = dates[b.id] ? new Date(dates[b.id]).getTime() : 1e15
+    return da - db_
+  })
+  const days = [], seen = {}
+  for (const m of sorted) {
+    const iso = dates[m.id]
+    const key = iso
+      ? new Date(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+      : 'Schedule TBD'
+    if (!seen[key]) { seen[key] = []; days.push([key, seen[key]]) }
+    seen[key].push(m)
+  }
+  return days
+}
+
+function fmtMatchTime(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+}
+
 /**
  * Single match score-prediction row.
  * The forwarded ref attaches to the HOME input so parent GroupSection/KnockoutRound
@@ -325,10 +349,12 @@ export default function ScorePicks() {
   const [results,       setResults]       = useState({})   // { match_id: { home_goals, away_goals } }
   const [teamOverrides, setTeamOverrides] = useState({})
   const [myPicks,       setMyPicks]       = useState({})   // { match_id: { home_goals, away_goals } }
+  const [matchDates,    setMatchDates]    = useState({})   // { match_id: utcDate ISO string }
   const [locked,        setLocked]        = useState(false)
   const [knockoutOpen,  setKnockoutOpen]  = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [tab,           setTab]           = useState('group')
+  const [viewMode,      setViewMode]      = useState('group') // 'group' | 'schedule'
   const [statusMsg,     setStatusMsg]     = useState('')
   const [confirmClear,  setConfirmClear]  = useState(false)
   const [clearing,      setClearing]      = useState(false)
@@ -344,6 +370,7 @@ export default function ScorePicks() {
       setAllMatches(matchRes.data.matches || [])
       setResults(matchRes.data.results || {})
       setTeamOverrides(matchRes.data.team_overrides || {})
+      setMatchDates(matchRes.data.match_dates || {})
       setLocked(matchRes.data.locked)
       setKnockoutOpen(matchRes.data.knockout_open)
 
@@ -670,23 +697,90 @@ export default function ScorePicks() {
 
       {/* Group Stage Tab */}
       {tab === 'group' && (
-        <div className="space-y-2">
-          {groups.map(letter => {
-            const gMatches = groupMatches.filter(m => m.group === letter)
-            return (
-              <GroupSection
-                key={letter}
-                letter={letter}
-                matches={gMatches}
-                picks={myPicks}
-                results={results}
-                locked={locked}
-                onSave={handleSave}
-                teamOverrides={teamOverrides}
-              />
-            )
-          })}
-        </div>
+        <>
+          {/* View mode toggle */}
+          <div className="flex gap-1 mb-4 bg-gray-800/40 rounded-lg p-1 w-fit border border-gray-700/40">
+            {[['group', '🏟 By Group'], ['schedule', '📅 Schedule']].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setViewMode(key)}
+                className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                  viewMode === key ? 'bg-fifa-gold text-gray-950' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* By Group view */}
+          {viewMode === 'group' && (
+            <div className="space-y-2">
+              {groups.map(letter => {
+                const gMatches = groupMatches.filter(m => m.group === letter)
+                return (
+                  <GroupSection
+                    key={letter}
+                    letter={letter}
+                    matches={gMatches}
+                    picks={myPicks}
+                    results={results}
+                    locked={locked}
+                    onSave={handleSave}
+                    teamOverrides={teamOverrides}
+                  />
+                )
+              })}
+            </div>
+          )}
+
+          {/* Schedule view */}
+          {viewMode === 'schedule' && (
+            <div className="space-y-6">
+              {Object.keys(matchDates).length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <p className="text-3xl mb-3">📅</p>
+                  <p className="text-sm font-medium">Match schedule not loaded yet</p>
+                  <p className="text-xs text-gray-600 mt-1">Admin needs to run an API sync to load match times</p>
+                </div>
+              ) : (
+                getScheduleDays(groupMatches, matchDates).map(([dayLabel, dayMatches]) => (
+                  <div key={dayLabel}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-px bg-gray-700/60 flex-1" />
+                      <span className="text-xs font-semibold text-gray-300 px-3 py-0.5 bg-gray-800/60 rounded-full border border-gray-700/50 whitespace-nowrap">
+                        {dayLabel}
+                      </span>
+                      <div className="h-px bg-gray-700/60 flex-1" />
+                    </div>
+                    <div className="space-y-1">
+                      {dayMatches.map(m => (
+                        <div key={m.id} className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-gray-500 w-[5.5rem] flex-shrink-0 text-right tabular-nums leading-4">
+                            {fmtMatchTime(matchDates[m.id])}
+                          </span>
+                          <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
+                            Grp {m.group}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <MatchRow
+                              match={m}
+                              pick={myPicks[m.id]}
+                              result={results[m.id]}
+                              locked={locked}
+                              onSave={handleSave}
+                              teamOverride={teamOverrides?.[m.id]}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Knockout Tab */}

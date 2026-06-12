@@ -994,6 +994,47 @@ export default function Admin() {
             )}
           </div>
 
+          {/* Sync History */}
+          {Array.isArray(settings.sync_history) && settings.sync_history.length > 0 && (
+            <div className="card">
+              <p className="text-sm font-semibold text-white mb-3">📋 Sync History</p>
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {settings.sync_history.map((entry, i) => (
+                  <div key={i} className="text-xs rounded-lg p-2.5 bg-gray-800/50 border border-gray-700/60">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-gray-400 tabular-nums">
+                        {new Date(entry.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
+                      </span>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className={entry.scores.length > 0 ? 'text-green-400 font-bold' : 'text-gray-600'}>
+                          ⚽ {entry.scores.length} score{entry.scores.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className={entry.groups.length > 0 ? 'text-blue-400' : 'text-gray-600'}>
+                          📊 {entry.groups.length} group{entry.groups.length !== 1 ? 's' : ''}
+                        </span>
+                        {entry.knockout.length > 0 && (
+                          <span className="text-purple-400">⚡ {entry.knockout.length} KO</span>
+                        )}
+                        <span className="text-gray-600">
+                          API: {entry.api_total} total / {entry.api_finished} finished
+                        </span>
+                      </div>
+                    </div>
+                    {entry.scores.length > 0 && (
+                      <p className="text-gray-400 mt-1 font-mono text-[10px]">{entry.scores.join(', ')}</p>
+                    )}
+                    {entry.finished_no_score?.length > 0 && (
+                      <p className="text-red-400 mt-1">⚠ no score data: {entry.finished_no_score.join(' · ')}</p>
+                    )}
+                    {entry.skipped_teams?.length > 0 && (
+                      <p className="text-orange-400 mt-1">⚠ unknown teams: {entry.skipped_teams.join(', ')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!apiConfigured && (
             <p className="text-xs text-gray-600 text-center">
               While the API key is not set you can still enter scores manually in the ⚽ Match Scores tab.

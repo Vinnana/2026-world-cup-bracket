@@ -6,7 +6,7 @@ import adminRoutes from './routes/admin.js'
 import picksRoutes from './routes/picks.js'
 import db, { initDB } from './database.js'
 import { seedPdaiPicks } from './seeds/pdai-picks.js'
-import { runResultsSync } from './resultsFetcher.js'
+import { runResultsSync, addSyncHistory } from './resultsFetcher.js'
 import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
 
 const app = express()
@@ -40,6 +40,7 @@ function startScheduler() {
       const summary = await runResultsSync(db)
       db.setSetting('last_fetch_at', summary.at)
       db.setSetting('last_fetch_status', JSON.stringify(summary))
+      addSyncHistory(db, summary)
       console.log(`Auto-fetch: ${summary.groups.length} groups, ${summary.knockout.length} knockout matches updated.`)
     } catch (err) {
       db.setSetting('last_fetch_status', JSON.stringify({ error: err.message, at: new Date().toISOString() }))
