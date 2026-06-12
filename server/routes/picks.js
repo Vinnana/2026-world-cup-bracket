@@ -20,9 +20,26 @@ function _rngPoisson(lambda) {
   return k - 1
 }
 
+// Cache: only recompute when the set of completed match scores changes.
+// Key = sorted "matchId:h-a" strings joined — changes the moment any new
+// result is recorded (or an existing one is corrected).
+let _winPctCache = null  // { hash: string, winPcts: Object }
+
+function _scoresHash(allScores) {
+  return allScores
+    .filter(s => s.home_goals != null && s.away_goals != null)
+    .map(s => `${s.match_id}:${s.home_goals}-${s.away_goals}`)
+    .sort()
+    .join('|')
+}
+
 /**
  * Monte Carlo estimate of each non-admin user's probability (0–100) of
  * finishing in 1st place overall.
+ *
+ * Result is cached by a hash of the completed match scores and returned
+ * immediately on every subsequent call until a score actually changes.
+ * The simulation only reruns when new results are recorded.
  *
  * For every remaining match (no result yet) we simulate independent
  * Poisson(1.35) goals for each team, score every player's pick with the
@@ -37,6 +54,10 @@ function _rngPoisson(lambda) {
  * @returns {Object} { userId: winPct }  e.g. { 3: 28.4, 7: 9.0, … }
  */
 function computeWinPcts(allPicks, allScores, players, computedScores) {
+  // Return cached result if scores haven't changed
+  const hash = _scoresHash(allScores)
+  if (_winPctCache?.hash === hash) return _winPctCache.winPcts
+
   const uids = players.map(u => u.id)
   if (uids.length === 0) return {}
 
@@ -58,7 +79,9 @@ function computeWinPcts(allPicks, allScores, players, computedScores) {
     const peak = Math.max(0, ...uids.map(uid => computedScores[uid]?.total || 0))
     const topUids = uids.filter(uid => (computedScores[uid]?.total || 0) === peak)
     const share = +(100 / topUids.length).toFixed(1)
-    return Object.fromEntries(uids.map(uid => [uid, topUids.includes(uid) ? share : 0]))
+    const winPcts = Object.fromEntries(uids.map(uid => [uid, topUids.includes(uid) ? share : 0]))
+    _winPctCache = { hash, winPcts }
+    return winPcts
   }
 
   const wins = Object.fromEntries(uids.map(uid => [uid, 0]))
@@ -87,9 +110,11 @@ function computeWinPcts(allPicks, allScores, players, computedScores) {
     for (const uid of topUids) wins[uid] += share
   }
 
-  return Object.fromEntries(
+  const winPcts = Object.fromEntries(
     uids.map(uid => [uid, +((wins[uid] / _SIM_N) * 100).toFixed(1)])
   )
+  _winPctCache = { hash, winPcts }
+  return winPcts
 }
 
 function isPicksLocked() {
