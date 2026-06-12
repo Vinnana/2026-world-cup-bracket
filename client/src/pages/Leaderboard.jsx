@@ -132,8 +132,9 @@ export default function Leaderboard() {
                     <div className={`text-xs font-semibold tabular-nums ${
                       entry.win_pct >= 30 ? 'text-green-400'  :
                       entry.win_pct >= 15 ? 'text-yellow-400' :
-                      entry.win_pct >= 5  ? 'text-orange-400' :
-                                            'text-gray-600'
+                      entry.win_pct >= 10 ? 'text-orange-400' :
+                      entry.win_pct >= 5  ? 'text-orange-500' :
+                                            'text-red-700'
                     }`}>
                       {entry.win_pct.toFixed(1)}% to win
                     </div>
