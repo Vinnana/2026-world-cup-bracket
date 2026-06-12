@@ -213,7 +213,7 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
       picks_count: allPicks.filter(p => p.user_id === u.id).length,
       win_pct: winPcts[u.id] ?? 0,
     }))
-    .sort((a, b) => b.total - a.total || a.username.localeCompare(b.username))
+    .sort((a, b) => b.total - a.total || b.win_pct - a.win_pct || a.username.localeCompare(b.username))
 
   res.json({
     leaderboard,
