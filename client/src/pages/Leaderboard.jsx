@@ -123,10 +123,22 @@ export default function Leaderboard() {
                     <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
                   </div>
                 </div>
-                <span className="font-black text-xl tabular-nums">
-                  {entry.total}
-                  <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
-                </span>
+                <div className="text-right">
+                  <div>
+                    <span className="font-black text-xl tabular-nums">{entry.total}</span>
+                    <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
+                  </div>
+                  {entry.win_pct != null && (
+                    <div className={`text-xs font-semibold tabular-nums ${
+                      entry.win_pct >= 30 ? 'text-green-400'  :
+                      entry.win_pct >= 15 ? 'text-yellow-400' :
+                      entry.win_pct >= 5  ? 'text-orange-400' :
+                                            'text-gray-600'
+                    }`}>
+                      {entry.win_pct.toFixed(1)}% to win
+                    </div>
+                  )}
+                </div>
               </div>
             )
           })}
@@ -152,6 +164,10 @@ export default function Leaderboard() {
       {/* Scoring legend */}
       <div className="card text-xs text-gray-500">
         <p className="font-semibold text-gray-300 mb-3">Scoring system</p>
+        <p className="text-gray-600 text-[11px] mb-3">
+          <span className="text-gray-400 font-medium">% to win</span> = projected probability of finishing 1st,
+          estimated via Monte Carlo simulation over all remaining matches.
+        </p>
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
             <span className="bg-green-700 text-green-100 px-1.5 py-0.5 rounded font-bold">+10</span>

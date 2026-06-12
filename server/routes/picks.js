@@ -7,6 +7,91 @@ import { MATCH_DATES } from '../schedule.js'
 
 const router = Router()
 
+// ── Win-probability Monte Carlo ──────────────────────────────────────────────
+// Poisson RNG via Knuth's algorithm — matches FIFA WC scoring distribution
+// (historical WC mean ≈ 1.33 goals/team/game; we use 1.35 for the expanded format)
+const _GOAL_LAMBDA = 1.35
+const _SIM_N       = 5000   // standard error ≤ ±0.7 pp at p = 0.5
+
+function _rngPoisson(lambda) {
+  const L = Math.exp(-lambda)
+  let k = 0, p = 1.0
+  do { k++; p *= Math.random() } while (p > L)
+  return k - 1
+}
+
+/**
+ * Monte Carlo estimate of each non-admin user's probability (0–100) of
+ * finishing in 1st place overall.
+ *
+ * For every remaining match (no result yet) we simulate independent
+ * Poisson(1.35) goals for each team, score every player's pick with the
+ * standard 10/6/4/0 rules, and tally who ends up on top.  Ties are split
+ * equally.  Completed matches already contribute to `computedScores` so
+ * only the *future* uncertainty is simulated.
+ *
+ * @param {Array}  allPicks       db.getAllScorePicks()
+ * @param {Array}  allScores      db.getAllMatchScores()
+ * @param {Array}  players        non-admin users
+ * @param {Object} computedScores scoreMap from computeAllScores()
+ * @returns {Object} { userId: winPct }  e.g. { 3: 28.4, 7: 9.0, … }
+ */
+function computeWinPcts(allPicks, allScores, players, computedScores) {
+  const uids = players.map(u => u.id)
+  if (uids.length === 0) return {}
+
+  // Nested pick lookup: pickLookup[uid][matchId] = { home_goals, away_goals }
+  const pickLookup = {}
+  for (const p of allPicks) {
+    if (!pickLookup[p.user_id]) pickLookup[p.user_id] = {}
+    pickLookup[p.user_id][p.match_id] = { home_goals: p.home_goals, away_goals: p.away_goals }
+  }
+
+  // Matches still without a result
+  const finished = new Set(
+    allScores.filter(s => s.home_goals != null && s.away_goals != null).map(s => s.match_id)
+  )
+  const pending = ALL_MATCHES.filter(m => !finished.has(m.id))
+
+  // No matches left → deterministic result
+  if (pending.length === 0) {
+    const peak = Math.max(0, ...uids.map(uid => computedScores[uid]?.total || 0))
+    const topUids = uids.filter(uid => (computedScores[uid]?.total || 0) === peak)
+    const share = +(100 / topUids.length).toFixed(1)
+    return Object.fromEntries(uids.map(uid => [uid, topUids.includes(uid) ? share : 0]))
+  }
+
+  const wins = Object.fromEntries(uids.map(uid => [uid, 0]))
+
+  for (let sim = 0; sim < _SIM_N; sim++) {
+    // Seed each player's running total from already-scored matches
+    const totals = {}
+    for (const uid of uids) totals[uid] = computedScores[uid]?.total || 0
+
+    // Simulate each unplayed match
+    for (const match of pending) {
+      const rh = _rngPoisson(_GOAL_LAMBDA)
+      const ra = _rngPoisson(_GOAL_LAMBDA)
+      for (const uid of uids) {
+        const pick = pickLookup[uid]?.[match.id]
+        if (!pick) continue
+        const pts = scoreMatch(pick, { home_goals: rh, away_goals: ra })
+        if (pts) totals[uid] += pts
+      }
+    }
+
+    // Credit the winner(s) — ties share the credit equally
+    const peak = Math.max(...uids.map(uid => totals[uid]))
+    const topUids = uids.filter(uid => totals[uid] === peak)
+    const share = 1.0 / topUids.length
+    for (const uid of topUids) wins[uid] += share
+  }
+
+  return Object.fromEntries(
+    uids.map(uid => [uid, +((wins[uid] / _SIM_N) * 100).toFixed(1)])
+  )
+}
+
 function isPicksLocked() {
   if (db.getSetting('picks_locked') === 'true') return true
   const lockTime = db.getSetting('picks_lock_time')
@@ -116,14 +201,17 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
   const users = db.getAllUsers()
   const computedScores = computeAllScores(allPicks, allScores)
 
-  const leaderboard = users
-    .filter(u => !u.is_admin)   // admins don't participate in picks
+  const players = users.filter(u => !u.is_admin)
+  const winPcts = computeWinPcts(allPicks, allScores, players, computedScores)
+
+  const leaderboard = players
     .map(u => ({
       user_id: u.id,
       username: u.username,
       total: computedScores[u.id]?.total || 0,
       has_picks: allPicks.some(p => p.user_id === u.id),
       picks_count: allPicks.filter(p => p.user_id === u.id).length,
+      win_pct: winPcts[u.id] ?? 0,
     }))
     .sort((a, b) => b.total - a.total || a.username.localeCompare(b.username))
 
