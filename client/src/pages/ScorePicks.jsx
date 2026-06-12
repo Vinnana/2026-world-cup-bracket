@@ -354,7 +354,7 @@ export default function ScorePicks() {
   const [knockoutOpen,  setKnockoutOpen]  = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [tab,           setTab]           = useState('group')
-  const [viewMode,      setViewMode]      = useState('group') // 'group' | 'schedule'
+  const [viewMode,      setViewMode]      = useState('upcoming') // 'upcoming' | 'completed' | 'group'
   const [statusMsg,     setStatusMsg]     = useState('')
   const [confirmClear,  setConfirmClear]  = useState(false)
   const [clearing,      setClearing]      = useState(false)
@@ -425,6 +425,8 @@ export default function ScorePicks() {
   // Derived data
   const groupMatches = allMatches.filter(m => m.round === 'Group')
   const knockoutMatches = allMatches.filter(m => m.round !== 'Group')
+  const upcomingGroupMatches  = groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null)
+  const completedGroupMatches = groupMatches.filter(m => results[m.id]?.home_goals != null)
   const groups = [...new Set(groupMatches.map(m => m.group))].sort()
 
   const totalPts = Object.values(myPicks).reduce((sum, pick) => {
@@ -700,7 +702,11 @@ export default function ScorePicks() {
         <>
           {/* View mode toggle */}
           <div className="flex gap-1 mb-4 bg-gray-800/40 rounded-lg p-1 w-fit border border-gray-700/40">
-            {[['group', '🏟 By Group'], ['schedule', '📅 Schedule']].map(([key, label]) => (
+            {[
+              ['upcoming',  '📅 Upcoming'],
+              ['completed', '✅ Completed'],
+              ['group',     '🏟 By Group'],
+            ].map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setViewMode(key)}
@@ -713,38 +719,16 @@ export default function ScorePicks() {
             ))}
           </div>
 
-          {/* By Group view */}
-          {viewMode === 'group' && (
-            <div className="space-y-2">
-              {groups.map(letter => {
-                const gMatches = groupMatches.filter(m => m.group === letter)
-                return (
-                  <GroupSection
-                    key={letter}
-                    letter={letter}
-                    matches={gMatches}
-                    picks={myPicks}
-                    results={results}
-                    locked={locked}
-                    onSave={handleSave}
-                    teamOverrides={teamOverrides}
-                  />
-                )
-              })}
-            </div>
-          )}
-
-          {/* Schedule view */}
-          {viewMode === 'schedule' && (
+          {/* Upcoming / Live view — unplayed matches, chronological */}
+          {viewMode === 'upcoming' && (
             <div className="space-y-6">
-              {Object.keys(matchDates).length === 0 ? (
+              {upcomingGroupMatches.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
-                  <p className="text-3xl mb-3">📅</p>
-                  <p className="text-sm font-medium">Match schedule not loaded yet</p>
-                  <p className="text-xs text-gray-600 mt-1">Admin needs to run an API sync to load match times</p>
+                  <p className="text-3xl mb-3">🏁</p>
+                  <p className="text-sm font-medium">All group stage matches completed!</p>
                 </div>
               ) : (
-                getScheduleDays(groupMatches, matchDates).map(([dayLabel, dayMatches]) => (
+                getScheduleDays(upcomingGroupMatches, matchDates).map(([dayLabel, dayMatches]) => (
                   <div key={dayLabel}>
                     <div className="flex items-center gap-2 mb-2">
                       <div className="h-px bg-gray-700/60 flex-1" />
@@ -778,6 +762,73 @@ export default function ScorePicks() {
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {/* Completed view — matches with results, most recent day first */}
+          {viewMode === 'completed' && (
+            <div className="space-y-6">
+              {completedGroupMatches.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <p className="text-3xl mb-3">⏳</p>
+                  <p className="text-sm font-medium">No completed matches yet.</p>
+                </div>
+              ) : (
+                getScheduleDays(completedGroupMatches, matchDates).reverse().map(([dayLabel, dayMatches]) => (
+                  <div key={dayLabel}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-px bg-gray-700/60 flex-1" />
+                      <span className="text-xs font-semibold text-gray-500 px-3 py-0.5 bg-gray-800/60 rounded-full border border-gray-700/50 whitespace-nowrap">
+                        ✓ {dayLabel}
+                      </span>
+                      <div className="h-px bg-gray-700/60 flex-1" />
+                    </div>
+                    <div className="space-y-1">
+                      {dayMatches.map(m => (
+                        <div key={m.id} className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-gray-500 w-[5.5rem] flex-shrink-0 text-right tabular-nums leading-4">
+                            {fmtMatchTime(matchDates[m.id])}
+                          </span>
+                          <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
+                            Grp {m.group}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <MatchRow
+                              match={m}
+                              pick={myPicks[m.id]}
+                              result={results[m.id]}
+                              locked={locked}
+                              onSave={handleSave}
+                              teamOverride={teamOverrides?.[m.id]}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* By Group view */}
+          {viewMode === 'group' && (
+            <div className="space-y-2">
+              {groups.map(letter => {
+                const gMatches = groupMatches.filter(m => m.group === letter)
+                return (
+                  <GroupSection
+                    key={letter}
+                    letter={letter}
+                    matches={gMatches}
+                    picks={myPicks}
+                    results={results}
+                    locked={locked}
+                    onSave={handleSave}
+                    teamOverrides={teamOverrides}
+                  />
+                )
+              })}
             </div>
           )}
         </>
