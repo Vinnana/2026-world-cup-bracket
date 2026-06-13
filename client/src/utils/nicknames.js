@@ -30,6 +30,7 @@ const NICKNAME_MAP = {
   'bibekkarki':             'Bibek K',
   'bbibek':                 'B Bibek',
   'sajagkarki':             'Sajag',
+  'phamal':                 'Prakash',
 }
 
 /**
