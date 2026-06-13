@@ -38,6 +38,8 @@ const ESPN_ALIAS = {
   'congo dr':                     'DR Congo',
   'democratic republic of congo': 'DR Congo',
   'bosnia & herzegovina':         'Bosnia and Herzegovina',
+  'bosnia-herzegovina':           'Bosnia and Herzegovina',
+  'bosnia herzegovina':           'Bosnia and Herzegovina',
   'cabo verde':                   'Cape Verde',
 }
 
