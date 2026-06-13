@@ -264,21 +264,4 @@ router.post('/create-user', requireAdmin, async (req, res) => {
   res.json({ success: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } })
 })
 
-// ONE-TIME migration endpoint — remove after use
-const INJECT_SECRET = 'wc2026-picks-inject-2026'
-router.post('/inject-picks', (req, res) => {
-  const { secret, user_id, picks = [], delete_match_ids = [] } = req.body
-  if (secret !== INJECT_SECRET) return res.status(403).json({ error: 'forbidden' })
-  if (!user_id) return res.status(400).json({ error: 'user_id required' })
-  for (const mid of delete_match_ids) db.deleteScorePick(Number(user_id), mid)
-  let upserted = 0
-  for (const { match_id, home_goals, away_goals } of picks) {
-    if (match_id && home_goals != null && away_goals != null) {
-      db.upsertScorePick(Number(user_id), match_id, Number(home_goals), Number(away_goals))
-      upserted++
-    }
-  }
-  res.json({ success: true, deleted: delete_match_ids.length, upserted })
-})
-
 export default router
