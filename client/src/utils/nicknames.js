@@ -5,8 +5,8 @@
 const NICKNAME_MAP = {
   'nextwcnepalko':          'Bishesh',
   'bellinghampalace':       'Avash',
-  'signing4england':        'Bishav',
-  'jai shambo':             'Rakshya',
+  'singing4england':        'Bishav',
+  'jai shambo 🦚💐🇳🇵':  'Rakshya',
   'sonsofpitches':          'Smriti',
   'madam':                  'Adya',
   'chukita':                'Chahana',
