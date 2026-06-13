@@ -264,4 +264,22 @@ router.post('/create-user', requireAdmin, async (req, res) => {
   res.json({ success: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } })
 })
 
+// ── ONE-TIME migration: inject picks for a user, bypassing the lock ────────────
+// Protected by a hard-coded secret (not JWT). Remove this endpoint after use.
+const INJECT_SECRET = 'wc2026-picks-inject-2026'
+router.post('/inject-picks', (req, res) => {
+  const { secret, user_id, picks } = req.body
+  if (secret !== INJECT_SECRET) return res.status(403).json({ error: 'forbidden' })
+  if (!user_id || !Array.isArray(picks)) return res.status(400).json({ error: 'invalid payload' })
+  let count = 0
+  for (const { match_id, home_goals, away_goals } of picks) {
+    if (match_id && home_goals != null && away_goals != null) {
+      db.upsertScorePick(Number(user_id), match_id, Number(home_goals), Number(away_goals))
+      count++
+    }
+  }
+  console.log(`[inject-picks] inserted ${count} picks for user_id ${user_id}`)
+  res.json({ success: true, count })
+})
+
 export default router
