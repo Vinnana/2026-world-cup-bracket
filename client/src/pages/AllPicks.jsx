@@ -2,6 +2,10 @@ import { useState, useEffect } from 'react'
 import { picks as picksApi, liveScores as liveApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
+import { getRealName } from '../utils/nicknames'
+
+// Strip email domain: "john@gmail.com" → "john"
+const displayName = (username) => username?.replace(/@.+$/, '') || ''
 
 /** Group matches by calendar day, sorted chronologically */
 function getScheduleDays(matches, dates) {
@@ -81,6 +85,7 @@ function MatchPickCell({ matchId, pick, result }) {
 /** Expandable user row */
 function UserRow({ userData, allMatches, results, rank, isMe }) {
   const [open, setOpen] = useState(false)
+  const realName = getRealName(userData.username)
 
   const groups = [...new Set(allMatches.filter(m => m.round === 'Group').map(m => m.group))].sort()
   const koRounds = ['R32', 'R16', 'QF', 'SF', 'Final']
@@ -105,9 +110,12 @@ function UserRow({ userData, allMatches, results, rank, isMe }) {
           </span>
           <div>
             <span className={`font-semibold ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
-              {userData.username}
+              {displayName(userData.username)}
             </span>
-            {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+            {isMe
+              ? <span className="ml-1 text-xs text-gray-500">(you)</span>
+              : realName && <span className="ml-1 text-xs text-gray-500">({realName})</span>
+            }
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -425,6 +433,8 @@ export default function AllPicks() {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
                             const pts = calcPts(pick, result)
+                            const isMePick = u.user_id === user?.id
+                            const label = getRealName(u.username) || displayName(u.username)
                             return (
                               <div
                                 key={u.user_id}
@@ -434,9 +444,11 @@ export default function AllPicks() {
                                   pts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
                                   pts === 0  ? 'bg-red-900/20 border-red-800/30' :
                                   'bg-gray-800/60 border-gray-700/40'
-                                }`}
+                                } ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
                               >
-                                <span className="text-gray-400 text-[9px] truncate max-w-[4rem]">{u.username}</span>
+                                <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
+                                  {label}
+                                </span>
                                 {hasPick ? (
                                   <>
                                     <span className="font-bold tabular-nums text-gray-200">{pick.home_goals}–{pick.away_goals}</span>
@@ -510,6 +522,8 @@ export default function AllPicks() {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
                             const pts = calcPts(pick, result)
+                            const isMePick = u.user_id === user?.id
+                            const label = getRealName(u.username) || displayName(u.username)
                             return (
                               <div
                                 key={u.user_id}
@@ -519,9 +533,11 @@ export default function AllPicks() {
                                   pts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
                                   pts === 0  ? 'bg-red-900/20 border-red-800/30' :
                                   'bg-gray-800/60 border-gray-700/40'
-                                }`}
+                                } ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
                               >
-                                <span className="text-gray-400 text-[9px] truncate max-w-[4rem]">{u.username}</span>
+                                <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
+                                  {label}
+                                </span>
                                 {hasPick ? (
                                   <>
                                     <span className="font-bold tabular-nums text-gray-200">{pick.home_goals}–{pick.away_goals}</span>

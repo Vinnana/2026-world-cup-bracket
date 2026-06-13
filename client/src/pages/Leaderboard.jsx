@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { picks as picksApi } from '../api'
 import { useAuth } from '../context/AuthContext'
+import { getRealName } from '../utils/nicknames'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 
@@ -65,11 +66,15 @@ export default function Leaderboard() {
               <div className="divide-y divide-gray-800">
                 {submittedAlpha.map(entry => {
                   const isMe = entry.user_id === user?.id
+                  const realName = getRealName(entry.username)
                   return (
                     <div key={entry.user_id} className="flex items-center justify-between py-2.5">
                       <span className={`font-medium ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
                         {displayName(entry.username)}
-                        {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+                        {isMe
+                          ? <span className="ml-1 text-xs text-gray-500">(you)</span>
+                          : realName && <span className="ml-1 text-xs text-gray-500 font-normal">({realName})</span>
+                        }
                       </span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-500">{entry.picks_count} picks</span>
@@ -109,6 +114,7 @@ export default function Leaderboard() {
           )}
           {submitted.map((entry, i) => {
             const isMe = entry.user_id === user?.id
+            const realName = getRealName(entry.username)
             return (
               <div
                 key={entry.user_id}
@@ -121,7 +127,10 @@ export default function Leaderboard() {
                   <div>
                     <span className="font-semibold">
                       {displayName(entry.username)}
-                      {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
+                      {isMe
+                        ? <span className="ml-1 text-xs text-gray-500">(you)</span>
+                        : realName && <span className="ml-1 text-xs text-gray-500 font-normal">({realName})</span>
+                      }
                     </span>
                     <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
                   </div>
