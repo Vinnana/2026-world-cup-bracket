@@ -81,6 +81,12 @@ export const picks = {
   clearMine: () => api.delete('/picks/my'),
 };
 
+/* ---------------- LIVE SCORES ---------------- */
+// Proxied through our server (avoids CORS + 45-second cache)
+export const liveScores = {
+  get: () => api.get('/live'),
+}
+
 /* ---------------- ADMIN ---------------- */
 export const admin = {
   settings: () => api.get('/admin/settings'),

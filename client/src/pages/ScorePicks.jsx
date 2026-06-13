@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, forwardRef } from 'react'
-import { picks as picksApi } from '../api'
+import { picks as picksApi, liveScores as liveApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
 import { jsPDF } from 'jspdf'
@@ -56,6 +56,20 @@ function getScheduleDays(matches, dates) {
 function fmtMatchTime(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+}
+
+/**
+ * Format a live-score entry's clock/status into a short string.
+ * ESPN's displayClock looks like "67:00" or "90:00+3".
+ * parseInt("67:00") === 67 (stops at colon), which is exactly the minute.
+ */
+function fmtLiveClock(live) {
+  if (live.status === 'ft') return 'FT'
+  if (live.status === 'ht' || live.status_name === 'STATUS_HALFTIME') return 'HT'
+  if (!live.clock) return 'LIVE'
+  const mins     = parseInt(live.clock) || 0         // "67:00" → 67
+  const plusMatch = live.clock.match(/\+(\d+)/)
+  return plusMatch ? `${mins}+${plusMatch[1]}'` : `${mins}'`
 }
 
 /**
@@ -355,6 +369,7 @@ export default function ScorePicks() {
   const [loading,       setLoading]       = useState(true)
   const [tab,           setTab]           = useState('group')
   const [viewMode,      setViewMode]      = useState('upcoming') // 'upcoming' | 'completed' | 'group'
+  const [liveScores,    setLiveScores]    = useState({})         // { matchId: LiveScore }
   const [statusMsg,     setStatusMsg]     = useState('')
   const [confirmClear,  setConfirmClear]  = useState(false)
   const [clearing,      setClearing]      = useState(false)
@@ -387,6 +402,21 @@ export default function ScorePicks() {
   useEffect(() => {
     load()
     const iv = setInterval(load, 30_000)
+    return () => clearInterval(iv)
+  }, [])
+
+  // Live scores — separate poll so it refreshes independently from picks data
+  useEffect(() => {
+    async function fetchLive() {
+      try {
+        const res = await liveApi.get()
+        setLiveScores(res.data.scores || {})
+      } catch {
+        // silently ignore — live scores are supplemental
+      }
+    }
+    fetchLive()
+    const iv = setInterval(fetchLive, 45_000)
     return () => clearInterval(iv)
   }, [])
 
@@ -738,26 +768,52 @@ export default function ScorePicks() {
                       <div className="h-px bg-gray-700/60 flex-1" />
                     </div>
                     <div className="space-y-1">
-                      {dayMatches.map(m => (
-                        <div key={m.id} className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-gray-500 w-[5.5rem] flex-shrink-0 text-right tabular-nums leading-4">
-                            {fmtMatchTime(matchDates[m.id])}
-                          </span>
-                          <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
-                            Grp {m.group}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <MatchRow
-                              match={m}
-                              pick={myPicks[m.id]}
-                              result={results[m.id]}
-                              locked={locked}
-                              onSave={handleSave}
-                              teamOverride={teamOverrides?.[m.id]}
-                            />
+                      {dayMatches.map(m => {
+                        const live = liveScores[m.id]
+                        return (
+                          <div key={m.id} className="flex items-center gap-1.5">
+                            {/* Time column — replaced by live clock+score when match is active */}
+                            <div className="w-[5.5rem] flex-shrink-0 text-right">
+                              {live ? (
+                                <div className="flex flex-col items-end gap-0">
+                                  <span className={`text-[10px] font-bold flex items-center gap-1 justify-end ${
+                                    live.status === 'live' ? 'text-red-400'
+                                    : live.status === 'ht' ? 'text-yellow-400'
+                                    : 'text-gray-500'
+                                  }`}>
+                                    {live.status === 'live' && (
+                                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse flex-shrink-0" />
+                                    )}
+                                    {fmtLiveClock(live)}
+                                  </span>
+                                  <span className={`text-sm font-black tabular-nums leading-tight ${
+                                    live.status === 'ft' ? 'text-gray-400' : 'text-white'
+                                  }`}>
+                                    {live.home_score}–{live.away_score}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-gray-500 tabular-nums leading-4">
+                                  {fmtMatchTime(matchDates[m.id])}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded flex-shrink-0">
+                              Grp {m.group}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <MatchRow
+                                match={m}
+                                pick={myPicks[m.id]}
+                                result={results[m.id]}
+                                locked={locked}
+                                onSave={handleSave}
+                                teamOverride={teamOverrides?.[m.id]}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 ))

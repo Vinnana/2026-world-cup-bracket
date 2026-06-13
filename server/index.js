@@ -4,6 +4,7 @@ import authRoutes from './routes/auth.js'
 import bracketRoutes from './routes/brackets.js'
 import adminRoutes from './routes/admin.js'
 import picksRoutes from './routes/picks.js'
+import liveRoutes from './routes/liveScores.js'
 import db, { initDB } from './database.js'
 import { seedPdaiPicks } from './seeds/pdai-picks.js'
 import { runResultsSync, addSyncHistory } from './resultsFetcher.js'
@@ -20,6 +21,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/brackets', bracketRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/picks', picksRoutes)
+app.use('/api/live',  liveRoutes)
 
 // Public: tournament data for bracket building
 app.get('/api/tournament', (req, res) => {

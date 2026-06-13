@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { picks as picksApi } from '../api'
+import { picks as picksApi, liveScores as liveApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
 
@@ -25,6 +25,15 @@ function getScheduleDays(matches, dates) {
 function fmtMatchTime(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+}
+
+function fmtLiveClock(live) {
+  if (live.status === 'ft') return 'FT'
+  if (live.status === 'ht' || live.status_name === 'STATUS_HALFTIME') return 'HT'
+  if (!live.clock) return 'LIVE'
+  const mins      = parseInt(live.clock) || 0
+  const plusMatch = live.clock.match(/\+(\d+)/)
+  return plusMatch ? `${mins}+${plusMatch[1]}'` : `${mins}'`
 }
 
 function ptsColor(pts) {
@@ -255,6 +264,7 @@ export default function AllPicks() {
   const { user } = useAuth()
   const [data,       setData]       = useState(null)
   const [matchDates, setMatchDates] = useState({})
+  const [liveScores, setLiveScores] = useState({})
   const [viewMode,   setViewMode]   = useState('upcoming') // 'upcoming' | 'completed' | 'player'
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
@@ -273,6 +283,21 @@ export default function AllPicks() {
     }
     load()
     const iv = setInterval(load, 30_000)
+    return () => clearInterval(iv)
+  }, [])
+
+  // Live scores — separate poll, graceful on failure
+  useEffect(() => {
+    async function fetchLive() {
+      try {
+        const res = await liveApi.get()
+        setLiveScores(res.data.scores || {})
+      } catch {
+        // silently ignore — live scores are supplemental
+      }
+    }
+    fetchLive()
+    const iv = setInterval(fetchLive, 45_000)
     return () => clearInterval(iv)
   }, [])
 
@@ -357,16 +382,32 @@ export default function AllPicks() {
                 </div>
                 <div className="space-y-3">
                   {dayMatches.map(m => {
-                    const result = results[m.id]
-                    const home = typeof m.home === 'string' ? m.home : null
-                    const away = typeof m.away === 'string' ? m.away : null
+                    const result   = results[m.id]
+                    const live     = liveScores[m.id]
+                    const home     = typeof m.home === 'string' ? m.home : null
+                    const away     = typeof m.away === 'string' ? m.away : null
                     const resultIn = result?.home_goals != null
                     return (
                       <div key={m.id} className="card py-2.5 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {matchDates[m.id] && (
+                          {/* Time or live score badge */}
+                          {live ? (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              live.status === 'live' ? 'bg-red-900/30 border-red-700/40 text-red-300'
+                              : live.status === 'ht' ? 'bg-yellow-900/30 border-yellow-700/40 text-yellow-300'
+                              : 'bg-gray-800 border-gray-700 text-gray-400'
+                            }`}>
+                              {live.status === 'live' && (
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                              )}
+                              {fmtLiveClock(live)}
+                              <span className={`font-black tabular-nums ml-0.5 ${live.status === 'ft' ? 'text-gray-300' : 'text-white'}`}>
+                                {live.home_score}–{live.away_score}
+                              </span>
+                            </span>
+                          ) : matchDates[m.id] ? (
                             <span className="text-[10px] text-gray-500 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
-                          )}
+                          ) : null}
                           <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
                           <span className="text-sm font-semibold text-white flex-1">
                             {home ? <>{getFlag(home)} {home}</> : 'TBD'}
