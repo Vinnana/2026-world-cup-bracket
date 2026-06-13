@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
@@ -45,6 +46,38 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+
+    // When a new SW takes control, reload immediately to pull in fresh assets.
+    // Guard flag prevents a double-reload if the injected autoUpdate script also fires.
+    let reloading = false
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return
+      reloading = true
+      window.location.reload()
+    })
+
+    // Proactively ask the SW to check for an update.
+    // iOS PWA never does this in the background, so we do it ourselves:
+    //   • every time the app comes to the foreground (visibilitychange)
+    //   • every 60 s while the app is open
+    const checkForUpdate = () => {
+      navigator.serviceWorker.getRegistration()
+        .then(reg => reg?.update())
+        .catch(() => {/* offline — ignore */})
+    }
+
+    const onVisible = () => { if (document.visibilityState === 'visible') checkForUpdate() }
+    document.addEventListener('visibilitychange', onVisible)
+    const interval = setInterval(checkForUpdate, 60_000)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      clearInterval(interval)
+    }
+  }, [])
+
   return (
     <AuthProvider>
       <BrowserRouter>

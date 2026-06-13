@@ -38,6 +38,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // New SW activates immediately — don't wait for all tabs to close
+        skipWaiting: true,
+        clientsClaim: true,
         // Cache all navigation requests so the app loads offline
         navigateFallback: '/index.html',
         // Don't pre-cache API calls — always fetch live
