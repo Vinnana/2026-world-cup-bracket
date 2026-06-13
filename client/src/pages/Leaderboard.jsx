@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 
+// Strip email domain so "john@gmail.com" renders as "john"
+const displayName = (username) => username.replace(/@.+$/, '')
+
 export default function Leaderboard() {
   const { user } = useAuth()
   const [data,    setData]    = useState(null)
@@ -65,7 +68,7 @@ export default function Leaderboard() {
                   return (
                     <div key={entry.user_id} className="flex items-center justify-between py-2.5">
                       <span className={`font-medium ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
-                        {entry.username}
+                        {displayName(entry.username)}
                         {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
                       </span>
                       <div className="flex items-center gap-2">
@@ -87,7 +90,7 @@ export default function Leaderboard() {
               <div className="flex flex-wrap gap-2">
                 {notSubmitted.map(e => (
                   <span key={e.user_id} className="text-xs bg-gray-800 text-gray-400 px-3 py-1 rounded-full">
-                    {e.username}
+                    {displayName(e.username)}
                   </span>
                 ))}
               </div>
@@ -117,7 +120,7 @@ export default function Leaderboard() {
                   </span>
                   <div>
                     <span className="font-semibold">
-                      {entry.username}
+                      {displayName(entry.username)}
                       {isMe && <span className="ml-1 text-xs text-gray-500">(you)</span>}
                     </span>
                     <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
@@ -155,7 +158,7 @@ export default function Leaderboard() {
           <div className="flex flex-wrap gap-2">
             {notSubmitted.map(e => (
               <span key={e.user_id} className="text-xs bg-gray-800 text-gray-400 px-3 py-1 rounded-full">
-                {e.username}
+                {displayName(e.username)}
               </span>
             ))}
           </div>
