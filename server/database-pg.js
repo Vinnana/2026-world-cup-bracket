@@ -344,6 +344,13 @@ export default class PgDB {
     this._w('DELETE FROM wc_score_picks WHERE user_id=$1', [user_id])
   }
 
+  deleteScorePick(user_id, match_id) {
+    this._data.score_picks = (this._data.score_picks || []).filter(
+      p => !(p.user_id === user_id && p.match_id === match_id)
+    )
+    this._w('DELETE FROM wc_score_picks WHERE user_id=$1 AND match_id=$2', [user_id, match_id])
+  }
+
   // ─── Match scores ─────────────────────────────────────────────────────────
   // NOTE: upsertMatchScore and deleteMatchScore are ASYNC — they await the PG
   // write directly so that callers can detect and surface failures.  All other
