@@ -53,10 +53,20 @@ function normalizeTeam(espnName) {
 function findMatchByTeams(espnHome, espnAway) {
   const nh = normalizeTeam(espnHome)
   const na = normalizeTeam(espnAway)
-  return ALL_MATCHES.find(m => {
+  // Try exact order first; fall back to reversed order (ESPN sometimes flips home/away)
+  const exact = ALL_MATCHES.find(m => {
     if (typeof m.home !== 'string' || typeof m.away !== 'string') return false
     return m.home.toLowerCase() === nh && m.away.toLowerCase() === na
-  }) || null
+  })
+  if (exact) return { match: exact, swapped: false }
+
+  const reversed = ALL_MATCHES.find(m => {
+    if (typeof m.home !== 'string' || typeof m.away !== 'string') return false
+    return m.home.toLowerCase() === na && m.away.toLowerCase() === nh
+  })
+  if (reversed) return { match: reversed, swapped: true }
+
+  return null
 }
 
 // ── ESPN fetch ───────────────────────────────────────────────────────────────
@@ -94,19 +104,24 @@ async function fetchLiveScores() {
         const awayC = comp.competitors?.find(c => c.homeAway === 'away')
         if (!homeC || !awayC) continue
 
-        const match = findMatchByTeams(homeC.team?.displayName, awayC.team?.displayName)
-        if (!match) continue
+        const found = findMatchByTeams(homeC.team?.displayName, awayC.team?.displayName)
+        if (!found) continue
+        const { match, swapped } = found
 
         // Derive a clean status string
         let status = 'live'
         if (state === 'post') status = 'ft'
         else if (statusName === 'STATUS_HALFTIME') status = 'ht'
 
+        const espnHome = parseInt(homeC.score) || 0
+        const espnAway = parseInt(awayC.score) || 0
+
+        // If ESPN had the teams in the opposite order to our schedule, swap the scores
         scores[match.id] = {
           status,
           status_name: statusName,
-          home_score: parseInt(homeC.score) || 0,
-          away_score: parseInt(awayC.score) || 0,
+          home_score: swapped ? espnAway : espnHome,
+          away_score: swapped ? espnHome : espnAway,
           clock: event.status?.displayClock || '',
         }
       }

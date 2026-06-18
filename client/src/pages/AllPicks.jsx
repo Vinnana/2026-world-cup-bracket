@@ -496,15 +496,31 @@ export default function AllPicks() {
                 <div className="space-y-3">
                   {dayMatches.map(m => {
                     const result = results[m.id]
+                    const live   = liveScores[m.id]
                     const home = typeof m.home === 'string' ? m.home : null
                     const away = typeof m.away === 'string' ? m.away : null
                     const resultIn = result?.home_goals != null
                     return (
                       <div key={m.id} className="card py-2.5 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {matchDates[m.id] && (
+                          {/* Live badge (same style as Upcoming view) */}
+                          {live ? (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              live.status === 'live' ? 'bg-red-900/30 border-red-700/40 text-red-300'
+                              : live.status === 'ht' ? 'bg-yellow-900/30 border-yellow-700/40 text-yellow-300'
+                              : 'bg-gray-800 border-gray-700 text-gray-400'
+                            }`}>
+                              {live.status === 'live' && (
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                              )}
+                              {fmtLiveClock(live)}
+                              <span className={`font-black tabular-nums ml-0.5 ${live.status === 'ft' ? 'text-gray-300' : 'text-white'}`}>
+                                {live.home_score}–{live.away_score}
+                              </span>
+                            </span>
+                          ) : matchDates[m.id] ? (
                             <span className="text-[10px] text-gray-500 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
-                          )}
+                          ) : null}
                           <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
                           <span className="text-sm font-semibold text-white flex-1">
                             {home ? <>{getFlag(home)} {home}</> : 'TBD'}
