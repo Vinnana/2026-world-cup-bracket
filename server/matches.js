@@ -19,10 +19,14 @@ function generateGroupMatches() {
     const base = gi * 6 + 1   // A→1, B→7, C→13 …
     const [t1, t2, t3, t4] = teams
 
+    // FIFA/ESPN official home-team designations:
+    //   MD1 pair1: t1 home  MD1 pair2: t3 home   (unchanged)
+    //   MD2 pair1: t1 home  MD2 pair2: t4 home   ← was t2 home (fixed)
+    //   MD3 pair1: t4 home  MD3 pair2: t2 home   ← was t1 home (fixed)
     const pairs = [
-      [t1, t2], [t3, t4],
-      [t1, t3], [t2, t4],
-      [t1, t4], [t2, t3],
+      [t1, t2], [t3, t4],   // MD1
+      [t1, t3], [t4, t2],   // MD2 — pair2 corrected: t4 is home, not t2
+      [t4, t1], [t2, t3],   // MD3 — pair1 corrected: t4 is home, not t1
     ]
 
     pairs.forEach(([home, away], mi) => {
