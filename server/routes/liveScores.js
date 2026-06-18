@@ -41,6 +41,7 @@ const ESPN_ALIAS = {
   'bosnia-herzegovina':           'Bosnia and Herzegovina',
   'bosnia herzegovina':           'Bosnia and Herzegovina',
   'cabo verde':                   'Cape Verde',
+  'cape verde islands':           'Cape Verde',
 }
 
 function normalizeTeam(espnName) {

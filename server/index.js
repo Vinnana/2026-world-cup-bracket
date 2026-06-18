@@ -12,7 +12,7 @@ import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
 
 const app = express()
 const PORT = process.env.PORT || 3001
-const FETCH_INTERVAL_MIN = Number(process.env.FETCH_INTERVAL_MIN || 15)
+const FETCH_INTERVAL_MIN = Number(process.env.FETCH_INTERVAL_MIN || 5)
 
 app.use(cors())
 app.use(express.json())
@@ -56,6 +56,8 @@ async function main() {
   try {
     await initDB()
     await seedPdaiPicks(db)
+    // Keep the admin panel's displayed interval in sync with the actual scheduler interval
+    db.setSetting('fetch_interval_min', String(FETCH_INTERVAL_MIN))
   } catch (err) {
     console.error('Failed to initialise database:', err.message)
     process.exit(1)
