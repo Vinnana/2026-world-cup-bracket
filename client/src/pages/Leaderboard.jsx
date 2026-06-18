@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { picks as picksApi } from '../api'
+import { picks as picksApi, liveScores as liveScoresApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getRealName } from '../utils/nicknames'
 
@@ -8,50 +8,184 @@ const MEDALS = ['🥇', '🥈', '🥉']
 // Strip email domain so "john@gmail.com" renders as "john"
 const displayName = (username) => username.replace(/@.+$/, '')
 
+// Mirror of server/scoring.js — compute provisional live points client-side
+function scoreMatchClient(pick, home_score, away_score) {
+  if (!pick || home_score == null || away_score == null) return 0
+  const ph = Number(pick.home_goals), pa = Number(pick.away_goals)
+  const rh = Number(home_score),      ra = Number(away_score)
+  if (isNaN(ph) || isNaN(pa)) return 0
+  if (ph === rh && pa === ra) return 10
+  const outcome = (h, a) => h > a ? 'home' : a > h ? 'away' : 'draw'
+  if (outcome(ph, pa) !== outcome(rh, ra)) return 0
+  if (ph - pa === rh - ra) return 6
+  return 4
+}
+
 export default function Leaderboard() {
   const { user } = useAuth()
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [data,        setData]        = useState(null)
+  const [allPicksData, setAllPicksData] = useState(null)
+  const [espnScores,  setEspnScores]  = useState({})
+  const [loading,     setLoading]     = useState(true)
 
   useEffect(() => {
+    let cancelled = false
+
     async function load() {
-      const res = await picksApi.leaderboard()
-      setData(res.data)
-      setLoading(false)
+      try {
+        // Fetch leaderboard + ESPN live scores in parallel
+        const [lbRes, liveRes] = await Promise.all([
+          picksApi.leaderboard(),
+          liveScoresApi.get().catch(() => ({ data: { scores: {} } })),
+        ])
+        if (cancelled) return
+        setData(lbRes.data)
+        setEspnScores(liveRes.data?.scores || {})
+
+        // picks/all is needed for live computation — only available once picks are locked
+        if (lbRes.data?.locked) {
+          const allRes = await picksApi.all().catch(() => null)
+          if (!cancelled && allRes?.data && !allRes.data.hidden) {
+            setAllPicksData(allRes.data)
+          }
+        }
+      } catch (err) {
+        console.error('[Leaderboard] load error:', err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
+
     load()
     const iv = setInterval(load, 30_000)
-    return () => clearInterval(iv)
+    return () => { cancelled = true; clearInterval(iv) }
   }, [])
 
   if (loading) return <div className="p-8 text-gray-400 text-center">Loading…</div>
 
   const { leaderboard = [], locked, results_count = 0 } = data || {}
 
-  // Before lock: show who submitted (alphabetical, no scores) vs who hasn't
-  // After lock: full ranked leaderboard with scores
-  const submitted    = leaderboard.filter(e => e.has_picks)
+  // ── Live scoring computation ────────────────────────────────────────────────
+
+  // User picks lookup: { user_id: { [match_id]: { home_goals, away_goals } } }
+  const userPicksMap = {}
+  for (const u of allPicksData?.users || []) {
+    userPicksMap[u.user_id] = u.picks || {}
+  }
+
+  // Official (admin-confirmed) results: { [match_id]: { home_goals, away_goals, ... } }
+  const officialResults = allPicksData?.results || {}
+
+  // Pending matches: ESPN has a score AND admin hasn't confirmed the result yet.
+  // Only meaningful when allPicksData is loaded (otherwise officialResults is empty
+  // and every ESPN match would falsely appear "unconfirmed").
+  const pendingMatches = allPicksData
+    ? Object.entries(espnScores).filter(([id, s]) => {
+        if (s.home_score == null || s.away_score == null) return false
+        if (!['live', 'ht', 'ft'].includes(s.status)) return false
+        const confirmed = officialResults[id] && officialResults[id].home_goals != null
+        return !confirmed
+      })
+    : []
+
+  // Matches that are actively in play right now
+  const hasActiveLive = pendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
+  // Any pending ESPN data at all (live OR just-finished but unconfirmed)
+  const hasPending    = pendingMatches.length > 0
+
+  // Compute live bonus per user
+  const liveBonusMap = {}
+  if (locked && allPicksData && hasPending) {
+    for (const entry of leaderboard) {
+      const picks = userPicksMap[entry.user_id] || {}
+      let bonus = 0
+      for (const [matchId, s] of pendingMatches) {
+        bonus += scoreMatchClient(picks[matchId], s.home_score, s.away_score)
+      }
+      liveBonusMap[entry.user_id] = bonus
+    }
+  }
+
+  const showingLive = locked && hasPending // whether the live overlay is active
+
+  // ── Build live-sorted leaderboard ──────────────────────────────────────────
+
+  const liveSortedLeaderboard = locked
+    ? [...leaderboard]
+        .map(e => ({
+          ...e,
+          liveBonus: liveBonusMap[e.user_id] || 0,
+          liveTotal: e.total + (liveBonusMap[e.user_id] || 0),
+        }))
+        .sort((a, b) =>
+          b.liveTotal - a.liveTotal ||
+          b.win_pct  - a.win_pct  ||
+          a.username.localeCompare(b.username)
+        )
+    : leaderboard
+
+  // Official rank from the server-sorted leaderboard (by total, no live)
+  const officialRankMap = {} // user_id → 1-based position (submitted only)
+  leaderboard.filter(e => e.has_picks).forEach((e, i) => {
+    officialRankMap[e.user_id] = i + 1
+  })
+
+  const submitted    = liveSortedLeaderboard.filter(e => e.has_picks)
   const notSubmitted = leaderboard.filter(e => !e.has_picks)
-  const submittedAlpha = [...submitted].sort((a, b) => a.username.localeCompare(b.username))
+  const submittedAlpha = [...leaderboard.filter(e => e.has_picks)]
+    .sort((a, b) => a.username.localeCompare(b.username))
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">🏆 Leaderboard</h1>
           {locked && results_count > 0 && (
-            <p className="text-xs text-gray-500 mt-1">{results_count} match results in</p>
+            <p className="text-xs text-gray-500 mt-1">{results_count} match result{results_count !== 1 ? 's' : ''} in</p>
           )}
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          {locked
-            ? <span className="text-red-400">🔒 Picks locked</span>
-            : <span className="text-green-400">🟢 Picks open</span>
-          }
-          <span className="text-gray-600">· auto-refreshes</span>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {/* Live pulse badge */}
+          {hasActiveLive && (
+            <span className="flex items-center gap-1.5 bg-red-900/30 border border-red-700/50 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-full">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
+              LIVE
+            </span>
+          )}
+          {/* FT pending (just finished, admin hasn't confirmed) */}
+          {!hasActiveLive && hasPending && locked && (
+            <span className="text-xs text-orange-400/80 bg-orange-900/20 border border-orange-700/30 px-2.5 py-1 rounded-full">
+              ⏳ result pending
+            </span>
+          )}
+          <span className={`text-xs ${locked ? 'text-red-400' : 'text-green-400'}`}>
+            {locked ? '🔒 Picks locked' : '🟢 Picks open'}
+          </span>
+          <span className="text-gray-600 text-xs">· auto-refreshes</span>
         </div>
       </div>
+
+      {/* ── Live context banner (shown when a match is in progress) ── */}
+      {showingLive && locked && (
+        <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 mb-4 ${
+          hasActiveLive
+            ? 'bg-red-900/20 border border-red-800/40 text-red-300'
+            : 'bg-orange-900/20 border border-orange-800/40 text-orange-300'
+        }`}>
+          <span>{hasActiveLive ? '🔴' : '⏳'}</span>
+          <span>
+            {hasActiveLive
+              ? `Live rankings — points update as matches progress (${pendingMatches.length} match${pendingMatches.length !== 1 ? 'es' : ''} in play)`
+              : `Provisional rankings — ${pendingMatches.length} result${pendingMatches.length !== 1 ? 's' : ''} awaiting admin confirmation`
+            }
+          </span>
+        </div>
+      )}
 
       {!locked ? (
         /* ── Picks still open: show who's in, no scores ── */
@@ -113,33 +247,75 @@ export default function Leaderboard() {
             <p className="text-gray-400 text-sm py-6 text-center">No picks submitted yet.</p>
           )}
           {submitted.map((entry, i) => {
-            const isMe = entry.user_id === user?.id
-            const realName = getRealName(entry.username)
+            const isMe      = entry.user_id === user?.id
+            const realName  = getRealName(entry.username)
+            const liveRank  = i + 1
+            const offRank   = officialRankMap[entry.user_id] ?? liveRank
+            // Positive = moved up (was lower rank number before, now higher)
+            const rankDelta = showingLive ? (offRank - liveRank) : 0
+
+            const displayTotal = showingLive ? entry.liveTotal : entry.total
+            const bonus        = entry.liveBonus || 0
+
             return (
               <div
                 key={entry.user_id}
                 className={`flex items-center justify-between py-3 px-1 ${isMe ? 'text-fifa-gold' : ''}`}
               >
+                {/* Left: rank medal + name + rank-change arrow */}
                 <div className="flex items-center gap-3">
-                  <span className="text-xl w-8 text-center">
-                    {MEDALS[i] || <span className="text-sm text-gray-400">{i + 1}.</span>}
+                  <span className="text-xl w-8 text-center shrink-0">
+                    {MEDALS[i] ?? <span className="text-sm text-gray-400">{i + 1}.</span>}
                   </span>
                   <div>
-                    <span className="font-semibold">
-                      {displayName(entry.username)}
-                      {isMe
-                        ? <span className="ml-1 text-xs text-gray-500">(you)</span>
-                        : realName && <span className="ml-1 text-xs text-gray-500 font-normal">({realName})</span>
-                      }
-                    </span>
-                    <span className="ml-2 text-xs text-gray-600">{entry.picks_count} picks</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold">
+                        {displayName(entry.username)}
+                        {isMe
+                          ? <span className="ml-1 text-xs text-gray-500">(you)</span>
+                          : realName && <span className="ml-1 text-xs text-gray-500 font-normal">({realName})</span>
+                        }
+                      </span>
+                      {/* Rank movement arrow */}
+                      {showingLive && rankDelta !== 0 && (
+                        <span className={`text-[11px] font-bold leading-none ${
+                          rankDelta > 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {rankDelta > 0 ? `▲${rankDelta}` : `▼${Math.abs(rankDelta)}`}
+                        </span>
+                      )}
+                      {/* No-change dash when live is active but rank didn't move */}
+                      {showingLive && rankDelta === 0 && bonus > 0 && (
+                        <span className="text-[11px] text-gray-600 leading-none">—</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-600">{entry.picks_count} picks</span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div>
-                    <span className="font-black text-xl tabular-nums">{entry.total}</span>
-                    <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
+
+                {/* Right: points + live bonus badge */}
+                <div className="text-right shrink-0 ml-2">
+                  <div className="flex items-center justify-end gap-1.5">
+                    <div>
+                      <span className={`font-black text-xl tabular-nums ${
+                        showingLive && bonus > 0 ? (isMe ? 'text-fifa-gold' : 'text-white') : ''
+                      }`}>
+                        {displayTotal}
+                      </span>
+                      <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
+                    </div>
+                    {/* Live bonus chip */}
+                    {showingLive && bonus > 0 && (
+                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                        hasActiveLive
+                          ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                          : 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                      }`}>
+                        +{bonus} {hasActiveLive ? '🔴' : '⏳'}
+                      </span>
+                    )}
                   </div>
+                  {/* Win % — only show when not live, or keep subtle */}
                   {entry.win_pct != null && (
                     <div className={`text-xs font-semibold tabular-nums ${
                       entry.win_pct >= 30 ? 'text-green-400'  :
@@ -158,7 +334,7 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {/* Not submitted — only shown alongside ranked view after lock */}
+      {/* Not submitted — only alongside ranked view after lock */}
       {locked && notSubmitted.length > 0 && (
         <div className="mb-6">
           <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
@@ -174,7 +350,7 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {/* Scoring legend */}
+      {/* ── Scoring legend ── */}
       <div className="card text-xs text-gray-500">
         <p className="font-semibold text-gray-300 mb-3">Scoring system</p>
         <p className="text-gray-600 text-[11px] mb-3">
