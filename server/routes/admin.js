@@ -9,6 +9,24 @@ import { runResultsSync, isConfigured, activeProvider, addSyncHistory } from '..
 
 const router = Router()
 
+// ONE-TIME: fix m10 (Bosnia and Herzegovina vs Switzerland) result orientation.
+// Admin entered home_team=Switzerland but our schedule has Bosnia as home.
+// Correct result: Bosnia 1 – Switzerland 4.  DELETE THIS ENDPOINT AFTER USE.
+router.post('/fix-m10-result', async (req, res) => {
+  if (req.body.secret !== 'fix-m10-bosnia-2026') return res.status(403).json({ error: 'forbidden' })
+  try {
+    await db.upsertMatchScore('m10', {
+      home_team: 'Bosnia and Herzegovina',
+      away_team: 'Switzerland',
+      home_goals: 1,
+      away_goals: 4,
+    })
+    res.json({ success: true, message: 'Fixed m10: Bosnia and Herzegovina 1 – Switzerland 4' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.get('/settings', requireAdmin, (req, res) => {
   const settings = db.getAllSettings()
   // Compute the effective lock state (same logic as isPicksLocked in picks.js)
