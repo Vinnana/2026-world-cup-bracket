@@ -14,23 +14,36 @@ const router = Router()
 // old, pre-orientation-fix schedule (Bosnia as home) and never got flipped, so
 // they render reversed under All Picks → Completed. This swaps only the picks —
 // nothing else (results/scores are left untouched).
-// DELETE THIS ENDPOINT AFTER THE MIGRATION RUNS.
-router.post('/migrate-m10-picks', (req, res) => {
-  if (req.body.secret !== 'swap-m10-picks-2026') return res.status(403).json({ error: 'forbidden' })
+//
+// Accepts GET or POST so it can be triggered by simply tapping a link on mobile:
+//   /api/admin/migrate-m10-picks?secret=swap-m10-picks-2026
+// It is idempotent: a settings flag records that the swap has run, so tapping
+// the link again (or a browser link-preview prefetch) will NOT re-reverse the
+// picks. DELETE THIS ENDPOINT AFTER THE MIGRATION RUNS.
+function migrateM10Picks(req, res) {
+  const secret = req.body?.secret || req.query?.secret
+  if (secret !== 'swap-m10-picks-2026') return res.status(403).json({ error: 'forbidden' })
 
   try {
+    if (db.getSetting('m10_picks_swapped') === 'true') {
+      return res.json({ success: true, already_done: true, picks_swapped: 0 })
+    }
+
     const m10Picks = db.getAllScorePicks().filter(p => p.match_id === 'm10')
     for (const p of m10Picks) {
       const newHome = p.away_goals
       const newAway = p.home_goals
       db.upsertScorePick(p.user_id, 'm10', newHome, newAway)
     }
+    db.setSetting('m10_picks_swapped', 'true')
     res.json({ success: true, picks_swapped: m10Picks.length })
   } catch (err) {
     console.error('[admin] migrate-m10-picks error:', err)
     res.status(500).json({ error: err.message })
   }
-})
+}
+router.get('/migrate-m10-picks', migrateM10Picks)
+router.post('/migrate-m10-picks', migrateM10Picks)
 
 router.get('/settings', requireAdmin, (req, res) => {
   const settings = db.getAllSettings()
