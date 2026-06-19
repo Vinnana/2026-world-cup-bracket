@@ -40,20 +40,22 @@ function fmtLiveClock(live) {
   return plusMatch ? `${mins}+${plusMatch[1]}'` : `${mins}'`
 }
 
-function ptsColor(pts) {
-  if (pts === 10) return 'bg-green-800 text-green-200'
-  if (pts === 6)  return 'bg-yellow-800 text-yellow-200'
-  if (pts === 4)  return 'bg-orange-800 text-orange-200'
-  if (pts === 0)  return 'bg-red-900/60 text-red-300'
-  return 'bg-gray-700 text-gray-400'
+// Box tint per scoring tier — distinct hues + saturated borders so +6, +4 and ✗
+// are easy to tell apart at a glance (not just adjacent muddy shades).
+function pickBoxClass(pts) {
+  if (pts === 10) return 'bg-green-500/15 border-green-500/60'
+  if (pts === 6)  return 'bg-yellow-400/15 border-yellow-400/70'
+  if (pts === 4)  return 'bg-orange-500/20 border-orange-500/70'
+  if (pts === 0)  return 'bg-red-600/20 border-red-500/60'
+  return 'bg-gray-800/60 border-gray-700/40'
 }
 
-// Distinct text color per scoring tier: +10 green · +6 yellow · +4 orange · ✗ red
-function ptsTextColor(pts) {
-  if (pts === 10) return 'text-green-400'
-  if (pts === 6)  return 'text-yellow-400'
-  if (pts === 4)  return 'text-orange-400'
-  return 'text-red-400'
+// Solid, high-contrast points pill — the filled color makes each tier unmistakable.
+function ptsPill(pts) {
+  if (pts === 10) return 'bg-green-500 text-green-950'
+  if (pts === 6)  return 'bg-yellow-400 text-yellow-950'
+  if (pts === 4)  return 'bg-orange-500 text-orange-950'
+  return 'bg-red-600 text-white'
 }
 
 const MEDALS = ['🥇', '🥈', '🥉']
@@ -477,13 +479,7 @@ export default function AllPicks() {
                             return (
                               <div
                                 key={u.user_id}
-                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  showPts === 10 ? 'bg-green-900/30 border-green-800/50' :
-                                  showPts === 6  ? 'bg-yellow-900/20 border-yellow-800/40' :
-                                  showPts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
-                                  showPts === 0  ? 'bg-red-900/20 border-red-800/30' :
-                                  'bg-gray-800/60 border-gray-700/40'
-                                } ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
+                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(showPts)} ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -494,7 +490,7 @@ export default function AllPicks() {
                                       {pick.home_goals}–{pick.away_goals}
                                     </span>
                                     {showPts != null && (
-                                      <span className={`text-[9px] font-bold leading-tight ${ptsTextColor(showPts)}`}>
+                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${ptsPill(showPts)}`}>
                                         {showPts > 0 ? `+${showPts}` : '✗'}
                                       </span>
                                     )}
@@ -569,13 +565,7 @@ export default function AllPicks() {
                             return (
                               <div
                                 key={u.user_id}
-                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  pts === 10 ? 'bg-green-900/30 border-green-800/50' :
-                                  pts === 6  ? 'bg-yellow-900/20 border-yellow-800/40' :
-                                  pts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
-                                  pts === 0  ? 'bg-red-900/20 border-red-800/30' :
-                                  'bg-gray-800/60 border-gray-700/40'
-                                } ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
+                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(pts)} ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -586,7 +576,7 @@ export default function AllPicks() {
                                       {pick.home_goals}–{pick.away_goals}
                                     </span>
                                     {pts != null && resultIn && (
-                                      <span className={`text-[9px] font-bold leading-tight ${ptsTextColor(pts)}`}>
+                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${ptsPill(pts)}`}>
                                         {pts > 0 ? `+${pts}` : '✗'}
                                       </span>
                                     )}
