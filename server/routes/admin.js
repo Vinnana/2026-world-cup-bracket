@@ -9,6 +9,29 @@ import { runResultsSync, isConfigured, activeProvider, addSyncHistory } from '..
 
 const router = Router()
 
+// ONE-TIME: swap home↔away goals for every participant pick on m10
+// (Switzerland vs Bosnia and Herzegovina). These picks were stored under the
+// old, pre-orientation-fix schedule (Bosnia as home) and never got flipped, so
+// they render reversed under All Picks → Completed. This swaps only the picks —
+// nothing else (results/scores are left untouched).
+// DELETE THIS ENDPOINT AFTER THE MIGRATION RUNS.
+router.post('/migrate-m10-picks', (req, res) => {
+  if (req.body.secret !== 'swap-m10-picks-2026') return res.status(403).json({ error: 'forbidden' })
+
+  try {
+    const m10Picks = db.getAllScorePicks().filter(p => p.match_id === 'm10')
+    for (const p of m10Picks) {
+      const newHome = p.away_goals
+      const newAway = p.home_goals
+      db.upsertScorePick(p.user_id, 'm10', newHome, newAway)
+    }
+    res.json({ success: true, picks_swapped: m10Picks.length })
+  } catch (err) {
+    console.error('[admin] migrate-m10-picks error:', err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 router.get('/settings', requireAdmin, (req, res) => {
   const settings = db.getAllSettings()
   // Compute the effective lock state (same logic as isPicksLocked in picks.js)
