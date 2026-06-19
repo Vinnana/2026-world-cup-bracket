@@ -48,6 +48,14 @@ function ptsColor(pts) {
   return 'bg-gray-700 text-gray-400'
 }
 
+// Distinct text color per scoring tier: +10 green · +6 yellow · +4 orange · ✗ red
+function ptsTextColor(pts) {
+  if (pts === 10) return 'text-green-400'
+  if (pts === 6)  return 'text-yellow-400'
+  if (pts === 4)  return 'text-orange-400'
+  return 'text-red-400'
+}
+
 const MEDALS = ['🥇', '🥈', '🥉']
 
 function calcPts(pick, result) {
@@ -483,14 +491,10 @@ export default function AllPicks() {
                                 {hasPick ? (
                                   <>
                                     <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
-                                      {home && getFlag(home)}{pick.home_goals}–{pick.away_goals}{away && getFlag(away)}
+                                      {pick.home_goals}–{pick.away_goals}
                                     </span>
                                     {showPts != null && (
-                                      <span className={`text-[9px] font-bold leading-tight ${
-                                        showPts === 0 ? 'text-red-400' :
-                                        ptsIsLive   ? 'text-orange-400' :
-                                        'text-green-400'
-                                      }`}>
+                                      <span className={`text-[9px] font-bold leading-tight ${ptsTextColor(showPts)}`}>
                                         {showPts > 0 ? `+${showPts}` : '✗'}
                                       </span>
                                     )}
@@ -578,12 +582,11 @@ export default function AllPicks() {
                                 </span>
                                 {hasPick ? (
                                   <>
-                                    {/* Score with team flags for clear orientation */}
                                     <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
-                                      {home && getFlag(home)}{pick.home_goals}–{pick.away_goals}{away && getFlag(away)}
+                                      {pick.home_goals}–{pick.away_goals}
                                     </span>
                                     {pts != null && resultIn && (
-                                      <span className={`text-[9px] font-bold leading-tight ${pts > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      <span className={`text-[9px] font-bold leading-tight ${ptsTextColor(pts)}`}>
                                         {pts > 0 ? `+${pts}` : '✗'}
                                       </span>
                                     )}
