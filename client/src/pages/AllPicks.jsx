@@ -61,31 +61,24 @@ function calcPts(pick, result) {
   return 4
 }
 
-function MatchPickCell({ matchId, pick, result }) {
-  const hasPick = pick && pick.home_goals != null
-  if (!hasPick) return <span className="text-gray-700 text-xs">–</span>
-
-  const pts = calcPts(pick, result)
-  const resultIn = result && result.home_goals != null
-
-  return (
-    <div className="flex flex-col items-center gap-0.5">
-      <span className="text-xs font-bold tabular-nums text-gray-200">
-        {pick.home_goals}–{pick.away_goals}
-      </span>
-      {resultIn && pts != null && (
-        <span className={`text-[9px] font-bold px-1 rounded ${ptsColor(pts)}`}>
-          {pts > 0 ? `+${pts}` : '✗'}
-        </span>
-      )}
-    </div>
-  )
+// Mirror of server scoring — compute provisional live points client-side
+function scoreMatchClient(pick, home_score, away_score) {
+  if (!pick || pick.home_goals == null || home_score == null || away_score == null) return 0
+  const ph = Number(pick.home_goals), pa = Number(pick.away_goals)
+  const rh = Number(home_score),      ra = Number(away_score)
+  if (isNaN(ph) || isNaN(pa)) return 0
+  if (ph === rh && pa === ra) return 10
+  const outcome = (h, a) => h > a ? 'home' : a > h ? 'away' : 'draw'
+  if (outcome(ph, pa) !== outcome(rh, ra)) return 0
+  if (ph - pa === rh - ra) return 6
+  return 4
 }
 
 /** Expandable user row */
-function UserRow({ userData, allMatches, results, rank, isMe }) {
+function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, hasActiveLive = false }) {
   const [open, setOpen] = useState(false)
   const realName = getRealName(userData.username)
+  const liveTotal = userData.total + liveBonus
 
   const groups = [...new Set(allMatches.filter(m => m.round === 'Group').map(m => m.group))].sort()
   const koRounds = ['R32', 'R16', 'QF', 'SF', 'Final']
@@ -104,27 +97,39 @@ function UserRow({ userData, allMatches, results, rank, isMe }) {
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-4 py-3 text-left"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-lg w-8 text-center">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="text-lg w-8 text-center shrink-0">
             {MEDALS[rank - 1] || <span className="text-sm text-gray-400">{rank}.</span>}
           </span>
-          <div>
-            <span className={`font-semibold ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
+          <div className="min-w-0">
+            <span className={`font-semibold truncate block ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
               {displayName(userData.username)}
+              {isMe
+                ? <span className="ml-1 text-xs text-gray-500">(you)</span>
+                : realName && <span className="ml-1 text-xs text-gray-500">({realName})</span>
+              }
             </span>
-            {isMe
-              ? <span className="ml-1 text-xs text-gray-500">(you)</span>
-              : realName && <span className="ml-1 text-xs text-gray-500">({realName})</span>
-            }
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="font-black text-lg tabular-nums text-white">
-            {userData.total}
-            <span className="text-xs font-normal text-gray-500 ml-1">pts</span>
-          </span>
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <div className="text-right">
+            <div className="flex items-center gap-1.5 justify-end">
+              <span className="font-black text-lg tabular-nums text-white">
+                {liveTotal}
+                <span className="text-xs font-normal text-gray-500 ml-1">pts</span>
+              </span>
+              {liveBonus > 0 && (
+                <span className={`text-[10px] font-bold px-1 py-0.5 rounded whitespace-nowrap ${
+                  hasActiveLive ? 'bg-red-900/50 text-red-400 border border-red-700/50'
+                                : 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                }`}>
+                  +{liveBonus}{hasActiveLive ? ' 🔴' : ' ⏳'}
+                </span>
+              )}
+            </div>
+          </div>
           <svg
-            className={`w-4 h-4 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-gray-500 transition-transform shrink-0 ${open ? 'rotate-180' : ''}`}
             viewBox="0 0 20 20" fill="currentColor"
           >
             <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/>
@@ -335,6 +340,26 @@ export default function AllPicks() {
   const upcomingGroupMatches  = groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null)
   const completedGroupMatches = groupMatches.filter(m => results[m.id]?.home_goals != null)
 
+  // ── Live scoring computation ────────────────────────────────────────────────
+  // Pending: ESPN has a score but admin hasn't confirmed yet
+  const pendingMatches = Object.entries(liveScores).filter(([id, s]) => {
+    if (s.home_score == null || s.away_score == null) return false
+    if (!['live', 'ht', 'ft'].includes(s.status)) return false
+    return !(results[id]?.home_goals != null)
+  })
+  const hasActiveLive = pendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
+
+  // Per-user live bonus (for By Player view)
+  const userLiveBonusMap = {}
+  for (const u of users) {
+    let bonus = 0
+    for (const [matchId, s] of pendingMatches) {
+      const pick = u.picks[matchId]
+      if (pick?.home_goals != null) bonus += scoreMatchClient(pick, s.home_score, s.away_score)
+    }
+    userLiveBonusMap[u.user_id] = bonus
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -370,7 +395,7 @@ export default function AllPicks() {
         ))}
       </div>
 
-      {/* Upcoming view — unplayed group matches, chronological */}
+      {/* ── Upcoming view — unplayed group matches, chronological ── */}
       {viewMode === 'upcoming' && (
         <div className="space-y-6">
           {upcomingGroupMatches.length === 0 ? (
@@ -433,16 +458,22 @@ export default function AllPicks() {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
                             const pts = calcPts(pick, result)
+                            // Live provisional pts for in-play matches
+                            const livePts = !resultIn && live?.home_score != null && hasPick
+                              ? scoreMatchClient(pick, live.home_score, live.away_score)
+                              : null
+                            const showPts = resultIn ? pts : livePts
+                            const ptsIsLive = !resultIn && livePts != null
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (
                               <div
                                 key={u.user_id}
                                 className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  pts === 10 ? 'bg-green-900/30 border-green-800/50' :
-                                  pts === 6  ? 'bg-yellow-900/20 border-yellow-800/40' :
-                                  pts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
-                                  pts === 0  ? 'bg-red-900/20 border-red-800/30' :
+                                  showPts === 10 ? 'bg-green-900/30 border-green-800/50' :
+                                  showPts === 6  ? 'bg-yellow-900/20 border-yellow-800/40' :
+                                  showPts === 4  ? 'bg-orange-900/20 border-orange-800/40' :
+                                  showPts === 0  ? 'bg-red-900/20 border-red-800/30' :
                                   'bg-gray-800/60 border-gray-700/40'
                                 } ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
                               >
@@ -451,10 +482,16 @@ export default function AllPicks() {
                                 </span>
                                 {hasPick ? (
                                   <>
-                                    <span className="font-bold tabular-nums text-gray-200">{pick.home_goals}–{pick.away_goals}</span>
-                                    {pts != null && resultIn && (
-                                      <span className={`text-[9px] font-bold ${pts > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {pts > 0 ? `+${pts}` : '✗'}
+                                    <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
+                                      {home && getFlag(home)}{pick.home_goals}–{pick.away_goals}{away && getFlag(away)}
+                                    </span>
+                                    {showPts != null && (
+                                      <span className={`text-[9px] font-bold leading-tight ${
+                                        showPts === 0 ? 'text-red-400' :
+                                        ptsIsLive   ? 'text-orange-400' :
+                                        'text-green-400'
+                                      }`}>
+                                        {showPts > 0 ? `+${showPts}` : '✗'}
                                       </span>
                                     )}
                                   </>
@@ -475,7 +512,7 @@ export default function AllPicks() {
         </div>
       )}
 
-      {/* Completed view — group matches with results, most recent day first */}
+      {/* ── Completed view — group matches with results, most recent day first ── */}
       {viewMode === 'completed' && (
         <div className="space-y-6">
           {completedGroupMatches.length === 0 ? (
@@ -496,30 +533,15 @@ export default function AllPicks() {
                 <div className="space-y-3">
                   {dayMatches.map(m => {
                     const result = results[m.id]
-                    const live   = liveScores[m.id]
                     const home = typeof m.home === 'string' ? m.home : null
                     const away = typeof m.away === 'string' ? m.away : null
                     const resultIn = result?.home_goals != null
                     return (
                       <div key={m.id} className="card py-2.5 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {/* Live badge (same style as Upcoming view) */}
-                          {live ? (
-                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              live.status === 'live' ? 'bg-red-900/30 border-red-700/40 text-red-300'
-                              : live.status === 'ht' ? 'bg-yellow-900/30 border-yellow-700/40 text-yellow-300'
-                              : 'bg-gray-800 border-gray-700 text-gray-400'
-                            }`}>
-                              {live.status === 'live' && (
-                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                              )}
-                              {fmtLiveClock(live)}
-                              <span className={`font-black tabular-nums ml-0.5 ${live.status === 'ft' ? 'text-gray-300' : 'text-white'}`}>
-                                {live.home_score}–{live.away_score}
-                              </span>
-                            </span>
-                          ) : matchDates[m.id] ? (
-                            <span className="text-[10px] text-gray-500 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
+                          {/* Match date label */}
+                          {matchDates[m.id] ? (
+                            <span className="text-[10px] text-gray-600 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
                           ) : null}
                           <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
                           <span className="text-sm font-semibold text-white flex-1">
@@ -528,8 +550,8 @@ export default function AllPicks() {
                             {away ? <>{getFlag(away)} {away}</> : 'TBD'}
                           </span>
                           {resultIn && (
-                            <span className="text-xs font-bold text-gray-200 bg-gray-700 px-2 py-0.5 rounded tabular-nums">
-                              {result.home_goals}–{result.away_goals}
+                            <span className="text-xs font-bold text-white bg-gray-700 px-2 py-0.5 rounded tabular-nums">
+                              FT {result.home_goals}–{result.away_goals}
                             </span>
                           )}
                         </div>
@@ -556,9 +578,12 @@ export default function AllPicks() {
                                 </span>
                                 {hasPick ? (
                                   <>
-                                    <span className="font-bold tabular-nums text-gray-200">{pick.home_goals}–{pick.away_goals}</span>
+                                    {/* Score with team flags for clear orientation */}
+                                    <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
+                                      {home && getFlag(home)}{pick.home_goals}–{pick.away_goals}{away && getFlag(away)}
+                                    </span>
                                     {pts != null && resultIn && (
-                                      <span className={`text-[9px] font-bold ${pts > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                      <span className={`text-[9px] font-bold leading-tight ${pts > 0 ? 'text-green-400' : 'text-red-400'}`}>
                                         {pts > 0 ? `+${pts}` : '✗'}
                                       </span>
                                     )}
@@ -580,11 +605,21 @@ export default function AllPicks() {
         </div>
       )}
 
-      {/* By Player view — leaderboard + expandable rows */}
+      {/* ── By Player view — leaderboard + expandable rows ── */}
       {viewMode === 'player' && (
         <div className="space-y-2">
           {users.length === 0 && (
             <p className="text-gray-500 text-center py-8">No picks submitted yet.</p>
+          )}
+          {/* Live context banner when a match is in play */}
+          {hasActiveLive && (
+            <div className="flex items-center gap-2 text-xs rounded-lg px-3 py-2 mb-2 bg-red-900/20 border border-red-800/40 text-red-300">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
+              <span>Live totals — updating as match progresses</span>
+            </div>
           )}
           {users.map((u, i) => (
             <UserRow
@@ -594,6 +629,8 @@ export default function AllPicks() {
               results={results}
               rank={i + 1}
               isMe={u.user_id === user?.id}
+              liveBonus={userLiveBonusMap[u.user_id] || 0}
+              hasActiveLive={hasActiveLive}
             />
           ))}
         </div>

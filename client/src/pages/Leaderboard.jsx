@@ -263,19 +263,19 @@ export default function Leaderboard() {
                 className={`flex items-center justify-between py-3 px-1 ${isMe ? 'text-fifa-gold' : ''}`}
               >
                 {/* Left: rank medal + name + rank-change arrow */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className="text-xl w-8 text-center shrink-0">
                     {MEDALS[i] ?? <span className="text-sm text-gray-400">{i + 1}.</span>}
                   </span>
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-semibold">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="font-semibold truncate">
                         {displayName(entry.username)}
-                        {isMe
-                          ? <span className="ml-1 text-xs text-gray-500">(you)</span>
-                          : realName && <span className="ml-1 text-xs text-gray-500 font-normal">({realName})</span>
-                        }
                       </span>
+                      {isMe
+                        ? <span className="text-xs text-gray-500 shrink-0">(you)</span>
+                        : realName && <span className="text-xs text-gray-500 font-normal shrink-0">({realName})</span>
+                      }
                       {/* Rank movement arrow */}
                       {showingLive && rankDelta !== 0 && (
                         <span className={`text-[11px] font-bold leading-none ${
