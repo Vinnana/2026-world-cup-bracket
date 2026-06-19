@@ -479,7 +479,7 @@ export default function AllPicks() {
                             return (
                               <div
                                 key={u.user_id}
-                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(showPts)} ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
+                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(showPts)} ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -565,7 +565,7 @@ export default function AllPicks() {
                             return (
                               <div
                                 key={u.user_id}
-                                className={`flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(pts)} ${isMePick ? 'ring-1 ring-fifa-gold/60 !border-fifa-gold/60' : ''}`}
+                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(pts)} ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
