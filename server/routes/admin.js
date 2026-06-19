@@ -9,51 +9,6 @@ import { runResultsSync, isConfigured, activeProvider, addSyncHistory } from '..
 
 const router = Router()
 
-// ONE-TIME: swap home↔away goals for every participant pick on the 24 group
-// matches whose home/away orientation was corrected (MD2 second game + MD3 first
-// game of each group). The original swap migration never ran (a proxy bug made
-// it throw immediately), so these picks are still stored under the old
-// orientation and render reversed under All Picks → Completed.
-//
-// Idempotent PER MATCH: a `<id>_picks_swapped` settings flag records each match
-// that has been swapped, so matches already fixed (e.g. m10) are skipped and
-// repeat taps / link-preview prefetches never re-reverse anything.
-//
-// Tappable on mobile:
-//   /api/admin/migrate-orientation-picks?secret=swap-orientation-2026
-// Swaps only picks — results/scores and all other matches are untouched.
-// DELETE THIS ENDPOINT AFTER THE MIGRATION RUNS.
-function migrateOrientationPicks(req, res) {
-  const secret = req.body?.secret || req.query?.secret
-  if (secret !== 'swap-orientation-2026') return res.status(403).json({ error: 'forbidden' })
-
-  // MD2 pair2 + MD3 pair1 for all 12 groups.
-  const FLIP = ['m4','m10','m16','m22','m28','m34','m40','m46','m52','m58','m64','m70',
-                'm5','m11','m17','m23','m29','m35','m41','m47','m53','m59','m65','m71']
-
-  try {
-    const swapped = {}
-    const skipped = []
-    for (const matchId of FLIP) {
-      if (db.getSetting(`${matchId}_picks_swapped`) === 'true') { skipped.push(matchId); continue }
-      const picks = db.getAllScorePicks().filter(p => p.match_id === matchId)
-      for (const p of picks) {
-        const newHome = p.away_goals
-        const newAway = p.home_goals
-        db.upsertScorePick(p.user_id, matchId, newHome, newAway)
-      }
-      db.setSetting(`${matchId}_picks_swapped`, 'true')
-      swapped[matchId] = picks.length
-    }
-    res.json({ success: true, swapped, skipped })
-  } catch (err) {
-    console.error('[admin] migrate-orientation-picks error:', err)
-    res.status(500).json({ error: err.message })
-  }
-}
-router.get('/migrate-orientation-picks', migrateOrientationPicks)
-router.post('/migrate-orientation-picks', migrateOrientationPicks)
-
 router.get('/settings', requireAdmin, (req, res) => {
   const settings = db.getAllSettings()
   // Compute the effective lock state (same logic as isPicksLocked in picks.js)
