@@ -21,6 +21,16 @@ function scoreMatchClient(pick, home_score, away_score) {
   return 4
 }
 
+// Live points chip color by scoring tier: +10 green · +6 yellow · +4 orange · ✗ red.
+// Aggregate sums across multiple live matches that aren't an exact tier read as green (gaining).
+function liveBonusChipClass(bonus) {
+  if (bonus === 10) return 'bg-green-900/50 text-green-400 border border-green-700/50'
+  if (bonus === 6)  return 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/50'
+  if (bonus === 4)  return 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+  if (bonus > 0)    return 'bg-green-900/50 text-green-400 border border-green-700/50'
+  return 'bg-red-900/50 text-red-400 border border-red-700/50'
+}
+
 export default function Leaderboard() {
   const { user } = useAuth()
   const [data,        setData]        = useState(null)
@@ -93,16 +103,23 @@ export default function Leaderboard() {
   // Any pending ESPN data at all (live OR just-finished but unconfirmed)
   const hasPending    = pendingMatches.length > 0
 
-  // Compute live bonus per user
+  // Compute live bonus per user (and whether they actually have a pick in play,
+  // so a wrong live pick can show a red ✗ rather than being hidden as a 0)
   const liveBonusMap = {}
+  const hasPendingPickMap = {}
   if (locked && allPicksData && hasPending) {
     for (const entry of leaderboard) {
       const picks = userPicksMap[entry.user_id] || {}
-      let bonus = 0
+      let bonus = 0, hasPick = false
       for (const [matchId, s] of pendingMatches) {
-        bonus += scoreMatchClient(picks[matchId], s.home_score, s.away_score)
+        const p = picks[matchId]
+        if (p && p.home_goals != null) {
+          hasPick = true
+          bonus += scoreMatchClient(p, s.home_score, s.away_score)
+        }
       }
       liveBonusMap[entry.user_id] = bonus
+      hasPendingPickMap[entry.user_id] = hasPick
     }
   }
 
@@ -254,8 +271,15 @@ export default function Leaderboard() {
             // Positive = moved up (was lower rank number before, now higher)
             const rankDelta = showingLive ? (offRank - liveRank) : 0
 
+            // Post-game movement: current rank vs the standings before the last
+            // game (only when not live; positive = climbed up)
+            const postDelta = (!showingLive && entry.prev_rank != null)
+              ? entry.prev_rank - liveRank
+              : null
+
             const displayTotal = showingLive ? entry.liveTotal : entry.total
             const bonus        = entry.liveBonus || 0
+            const hasPendingPick = hasPendingPickMap[entry.user_id]
 
             return (
               <div
@@ -276,7 +300,7 @@ export default function Leaderboard() {
                         ? <span className="text-xs text-gray-500 shrink-0">(you)</span>
                         : realName && <span className="text-xs text-gray-500 font-normal shrink-0">({realName})</span>
                       }
-                      {/* Rank movement arrow */}
+                      {/* Live rank movement arrow (while matches are in play) */}
                       {showingLive && rankDelta !== 0 && (
                         <span className={`text-[11px] font-bold leading-none ${
                           rankDelta > 0 ? 'text-green-400' : 'text-red-400'
@@ -287,6 +311,16 @@ export default function Leaderboard() {
                       {/* No-change dash when live is active but rank didn't move */}
                       {showingLive && rankDelta === 0 && bonus > 0 && (
                         <span className="text-[11px] text-gray-600 leading-none">—</span>
+                      )}
+                      {/* Post-game movement vs the standings before the last game */}
+                      {postDelta != null && (
+                        postDelta > 0 ? (
+                          <span className="text-[11px] font-bold text-green-400 leading-none" title="Climbed since last game">▲{postDelta}</span>
+                        ) : postDelta < 0 ? (
+                          <span className="text-[11px] font-bold text-red-400 leading-none" title="Dropped since last game">▼{Math.abs(postDelta)}</span>
+                        ) : (
+                          <span className="text-[11px] text-gray-500 leading-none" title="No change since last game">—</span>
+                        )
                       )}
                     </div>
                     <span className="text-xs text-gray-600">{entry.picks_count} picks</span>
@@ -304,14 +338,10 @@ export default function Leaderboard() {
                       </span>
                       <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
                     </div>
-                    {/* Live bonus chip */}
-                    {showingLive && bonus > 0 && (
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
-                        hasActiveLive
-                          ? 'bg-red-900/50 text-red-400 border border-red-700/50'
-                          : 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
-                      }`}>
-                        +{bonus} {hasActiveLive ? '🔴' : '⏳'}
+                    {/* Live points chip — colored by scoring tier (+10/+6/+4/✗) */}
+                    {showingLive && hasPendingPick && (
+                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${liveBonusChipClass(bonus)}`}>
+                        {bonus > 0 ? `+${bonus}` : '✗'} {hasActiveLive ? '🔴' : '⏳'}
                       </span>
                     )}
                   </div>

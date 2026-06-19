@@ -240,11 +240,39 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
     }))
     .sort((a, b) => b.total - a.total || b.win_pct - a.win_pct || a.username.localeCompare(b.username))
 
+  const results_count = allScores.filter(s => s.home_goals != null).length
+
+  // ── Rank-change tracking ────────────────────────────────────────────────────
+  // Snapshot the ranking each time a new result lands so the client can show how
+  // positions shifted because of the most recent game. `prev_ranks` holds the
+  // standings from before the latest result; we roll it forward only when
+  // results_count changes, so it stays stable between games and across refreshes.
+  const currentRanks = {}
+  leaderboard.filter(e => e.has_picks).forEach((e, i) => { currentRanks[e.user_id] = i + 1 })
+
+  let snap = null
+  try { snap = JSON.parse(db.getSetting('rank_snapshot') || 'null') } catch {}
+  if (!snap || snap.count !== results_count) {
+    snap = {
+      count: results_count,
+      ranks: currentRanks,
+      prev_ranks: snap?.ranks || null,
+      prev_count: snap?.count ?? null,
+    }
+    db.setSetting('rank_snapshot', JSON.stringify(snap))
+  }
+
+  // Expose each player's rank from before the latest game (null until we have a
+  // prior snapshot to compare against — i.e. no arrows for the very first game).
+  for (const e of leaderboard) {
+    e.prev_rank = snap.prev_ranks ? (snap.prev_ranks[e.user_id] ?? null) : null
+  }
+
   res.json({
     leaderboard,
     locked: isPicksLocked(),
     knockout_open: isKnockoutOpen(),
-    results_count: allScores.filter(s => s.home_goals != null).length,
+    results_count,
   })
 })
 
