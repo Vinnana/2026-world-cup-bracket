@@ -338,10 +338,13 @@ export default function Leaderboard() {
                       </span>
                       <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
                     </div>
-                    {/* Live points chip — colored by scoring tier (+10/+6/+4/✗) */}
+                    {/* Live points chip — colored by scoring tier (+10/+6/+4/✗).
+                        The status dot inherits the tier color (bg-current) so the
+                        whole badge is one color; it pulses while a match is live. */}
                     {showingLive && hasPendingPick && (
-                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${liveBonusChipClass(bonus)}`}>
-                        {bonus > 0 ? `+${bonus}` : '✗'} {hasActiveLive ? '🔴' : '⏳'}
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${liveBonusChipClass(bonus)}`}>
+                        {bonus > 0 ? `+${bonus}` : '✗'}
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full bg-current ${hasActiveLive ? 'animate-pulse' : 'opacity-60'}`} />
                       </span>
                     )}
                   </div>
