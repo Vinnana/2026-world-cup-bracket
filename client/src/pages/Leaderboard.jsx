@@ -21,12 +21,12 @@ function scoreMatchClient(pick, home_score, away_score) {
   return 4
 }
 
-// Live points chip color by scoring tier: +10 green · +6 yellow · +4 orange · ✗ red.
+// Live points chip color by scoring tier: +10 green · +6 yellow · +4 blue · ✗ red.
 // Aggregate sums across multiple live matches that aren't an exact tier read as green (gaining).
 function liveBonusChipClass(bonus) {
   if (bonus === 10) return 'bg-green-900/50 text-green-400 border border-green-700/50'
   if (bonus === 6)  return 'bg-yellow-900/50 text-yellow-400 border border-yellow-700/50'
-  if (bonus === 4)  return 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+  if (bonus === 4)  return 'bg-blue-900/50 text-blue-400 border border-blue-700/50'
   if (bonus > 0)    return 'bg-green-900/50 text-green-400 border border-green-700/50'
   return 'bg-red-900/50 text-red-400 border border-red-700/50'
 }
@@ -400,7 +400,7 @@ export default function Leaderboard() {
             <span>Right winner + goal diff</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="bg-orange-700 text-orange-100 px-1.5 py-0.5 rounded font-bold">+4</span>
+            <span className="bg-blue-700 text-blue-100 px-1.5 py-0.5 rounded font-bold">+4</span>
             <span>Right winner / draw</span>
           </div>
           <div className="flex items-center gap-2">
