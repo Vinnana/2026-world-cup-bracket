@@ -45,7 +45,7 @@ function fmtLiveClock(live) {
 function pickBoxClass(pts) {
   if (pts === 10) return 'bg-green-500/15 border-green-500/60'
   if (pts === 6)  return 'bg-yellow-400/15 border-yellow-400/70'
-  if (pts === 4)  return 'bg-orange-500/20 border-orange-500/70'
+  if (pts === 4)  return 'bg-blue-500/20 border-blue-500/70'
   if (pts === 0)  return 'bg-red-600/20 border-red-500/60'
   return 'bg-gray-800/60 border-gray-700/40'
 }
@@ -54,7 +54,7 @@ function pickBoxClass(pts) {
 function ptsPill(pts) {
   if (pts === 10) return 'bg-green-500 text-green-950'
   if (pts === 6)  return 'bg-yellow-400 text-yellow-950'
-  if (pts === 4)  return 'bg-orange-500 text-orange-950'
+  if (pts === 4)  return 'bg-blue-500 text-white'
   return 'bg-red-600 text-white'
 }
 
