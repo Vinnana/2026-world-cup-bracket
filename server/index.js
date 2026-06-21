@@ -7,7 +7,7 @@ import picksRoutes from './routes/picks.js'
 import liveRoutes from './routes/liveScores.js'
 import db, { initDB } from './database.js'
 import { seedPdaiPicks } from './seeds/pdai-picks.js'
-import { runResultsSync, addSyncHistory } from './resultsFetcher.js'
+import { runResultsSync, addSyncHistory, isConfigured, activeProvider } from './resultsFetcher.js'
 import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
 import { MATCH_DATES } from './schedule.js'
 
@@ -46,11 +46,11 @@ app.get('/api/tournament', (req, res) => {
 // Scheduled auto-fetch of results. Only runs when the admin has enabled it
 // (settings.auto_fetch === 'true') AND a FOOTBALL_DATA_TOKEN is configured.
 function startScheduler() {
-  if (!process.env.FOOTBALL_DATA_TOKEN) {
-    console.log('Auto-fetch: FOOTBALL_DATA_TOKEN not set — results are admin-entered only.')
+  if (!isConfigured()) {
+    console.log(`Auto-fetch: ${activeProvider()} not configured — results are admin-entered only.`)
     return
   }
-  console.log(`Auto-fetch: enabled, polling every ${LIVE_FETCH_INTERVAL_MIN} min during live games, every ${IDLE_FETCH_INTERVAL_MIN} min otherwise (when turned on in Admin).`)
+  console.log(`Auto-fetch (${activeProvider()}): enabled, polling every ${LIVE_FETCH_INTERVAL_MIN} min during live games, every ${IDLE_FETCH_INTERVAL_MIN} min otherwise (when turned on in Admin).`)
 
   // Self-rescheduling loop so the cadence can change with the schedule.
   async function tick() {
