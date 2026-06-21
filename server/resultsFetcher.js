@@ -21,6 +21,7 @@
 
 import { GROUPS, KNOCKOUT } from './teams.js'
 import { GROUP_MATCHES } from './matches.js'
+import { MATCH_DATES } from './schedule.js'
 
 // ─── Shared stage → round key mapping ───────────────────────────────────────
 const STAGE_TO_ROUND = {
@@ -54,6 +55,7 @@ const ALIASES = {
   bosnia:                     'Bosnia and Herzegovina',
   bosniaherzegovina:          'Bosnia and Herzegovina',
   curacao:                    'Curaçao',
+  capeverdeislands:           'Cape Verde',   // ESPN display name
 }
 
 const ALL_TEAMS  = Object.values(GROUPS).flatMap(g => g.teams)
@@ -264,18 +266,158 @@ async function fetchApiFootball() {
   return { standings, matches }
 }
 
+// ─── Provider 3: ESPN public scoreboard (no API key required) ────────────────
+// Same source used by the live-scores ticker. ESPN returns per-match data only,
+// so group standings are DERIVED from finished group fixtures below — everything
+// downstream (match_scores, group results, knockout, dates) is unchanged.
+
+const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard'
+
+function espnStage(ev) {
+  const txt = (
+    ev?.competitions?.[0]?.notes?.[0]?.headline ||
+    ev?.competitions?.[0]?.type?.text ||
+    ev?.season?.slug || ''
+  ).toLowerCase()
+  if (txt.includes('round of 32')) return 'LAST_32'
+  if (txt.includes('round of 16')) return 'LAST_16'
+  if (txt.includes('quarter'))     return 'QUARTER_FINALS'
+  if (txt.includes('semi'))        return 'SEMI_FINALS'
+  if (txt.includes('final'))       return 'FINAL'
+  return 'GROUP_STAGE'
+}
+
+function mapEspnEvent(ev) {
+  const comp = ev.competitions?.[0]
+  if (!comp) return null
+  const homeC = comp.competitors?.find(c => c.homeAway === 'home')
+  const awayC = comp.competitors?.find(c => c.homeAway === 'away')
+  if (!homeC || !awayC) return null
+
+  const state     = ev.status?.type?.state           // 'pre' | 'in' | 'post'
+  const completed = ev.status?.type?.completed === true
+  const status    = (completed || state === 'post') ? 'FINISHED' : (state === 'in' ? 'IN_PLAY' : 'SCHEDULED')
+  const toInt     = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null }
+  const hGoals    = toInt(homeC.score)
+  const aGoals    = toInt(awayC.score)
+  const homeName  = homeC.team?.displayName
+  const awayName  = awayC.team?.displayName
+
+  // Group fixtures: re-orient to OUR schedule's home/away so stored scores match
+  // the orientation the rest of the app displays and scores against.
+  const H = mapTeam(homeName), A = mapTeam(awayName)
+  const gm = (H && A)
+    ? GROUP_MATCHES.find(m => (m.home === H && m.away === A) || (m.home === A && m.away === H))
+    : null
+  if (gm) {
+    const swap = gm.home === A && gm.away === H   // ESPN listed teams reversed vs us
+    const sh = swap ? aGoals : hGoals
+    const sa = swap ? hGoals : aGoals
+    return {
+      stage: 'GROUP_STAGE', status, utcDate: ev.date || null,
+      homeTeam: { name: gm.home }, awayTeam: { name: gm.away },
+      score: { home: sh, away: sa, winner: sh == null || sa == null ? null : (sh > sa ? 'HOME_TEAM' : sa > sh ? 'AWAY_TEAM' : null) },
+    }
+  }
+
+  // Knockout / unmapped: keep ESPN orientation; winner comes from ESPN's flag.
+  return {
+    stage: espnStage(ev), status, utcDate: ev.date || null,
+    homeTeam: { name: homeName }, awayTeam: { name: awayName },
+    score: { home: hGoals, away: aGoals, winner: homeC.winner === true ? 'HOME_TEAM' : awayC.winner === true ? 'AWAY_TEAM' : null },
+  }
+}
+
+// Build group tables from finished group fixtures so processGroups works as-is.
+function deriveEspnStandings(matches) {
+  const tables = {}
+  for (const [letter, g] of Object.entries(GROUPS)) {
+    tables[letter] = {}
+    for (const t of g.teams) tables[letter][t] = { team: t, points: 0, gf: 0, ga: 0, played: 0 }
+  }
+  for (const m of matches) {
+    if (m.status !== 'FINISHED') continue
+    const h = mapTeam(m.homeTeam?.name), a = mapTeam(m.awayTeam?.name)
+    if (!h || !a || !findGroupMatchId(h, a)) continue   // group fixtures only
+    const hg = m.score?.home, ag = m.score?.away
+    if (hg == null || ag == null) continue
+    const letter = TEAM_GROUP[h]
+    const T = tables[letter]
+    if (!T || !T[h] || !T[a]) continue
+    T[h].played++; T[a].played++
+    T[h].gf += hg; T[h].ga += ag; T[a].gf += ag; T[a].ga += hg
+    if (hg > ag) T[h].points += 3
+    else if (ag > hg) T[a].points += 3
+    else { T[h].points += 1; T[a].points += 1 }
+  }
+  return Object.entries(tables).map(([letter, T]) => {
+    const rows = Object.values(T).map(r => ({ ...r, gd: r.gf - r.ga }))
+    rows.sort((x, y) => y.points - x.points || y.gd - x.gd || y.gf - x.gf || x.team.localeCompare(y.team))
+    return {
+      group: `GROUP_${letter}`,
+      table: rows.map((r, i) => ({
+        position: i + 1,
+        team: { name: r.team },
+        points: r.points,
+        goalDifference: r.gd,
+        goalsFor: r.gf,
+        playedGames: r.played,
+      })),
+    }
+  })
+}
+
+async function fetchEspn() {
+  // Cover the whole tournament window in ~10-day range chunks (robust to any
+  // per-response cap), de-duplicating events across chunk boundaries.
+  const times   = Object.values(MATCH_DATES).map(d => Date.parse(d)).filter(Number.isFinite)
+  const startMs = times.length ? Math.min(...times) : Date.parse('2026-06-11T00:00:00Z')
+  const endMs   = (times.length ? Math.max(...times) : startMs) + 31 * 86_400_000  // +31d covers knockouts
+  const fmt     = ms => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '')
+  const CHUNK   = 10 * 86_400_000
+
+  const events = []
+  const seen   = new Set()
+  for (let s = startMs; s <= endMs; s += CHUNK + 86_400_000) {
+    const e = Math.min(s + CHUNK, endMs)
+    try {
+      const data = await httpJson(`${ESPN_BASE}?dates=${fmt(s)}-${fmt(e)}&limit=400`, {})
+      for (const ev of data.events || []) {
+        if (ev.id && seen.has(ev.id)) continue
+        if (ev.id) seen.add(ev.id)
+        events.push(ev)
+      }
+    } catch (err) {
+      console.warn(`[resultsFetcher] ESPN chunk ${fmt(s)}-${fmt(e)} failed:`, err.message)
+    }
+  }
+
+  const matches   = events.map(mapEspnEvent).filter(Boolean)
+  const standings = deriveEspnStandings(matches)
+  const meta = { competition: 'fifa.world (ESPN)', season: '2026', total: matches.length }
+  return { standings, matches, meta }
+}
+
 // ─── Provider selection ──────────────────────────────────────────────────────
+// Default is now ESPN (no key needed). Override with RESULTS_PROVIDER=football-data
+// or RESULTS_PROVIDER=api-football to fall back to the keyed providers.
 
 export function activeProvider() {
-  return process.env.RESULTS_PROVIDER === 'api-football' ? 'api-football' : 'football-data'
+  if (process.env.RESULTS_PROVIDER === 'football-data') return 'football-data'
+  if (process.env.RESULTS_PROVIDER === 'api-football')  return 'api-football'
+  return 'espn'
 }
 export function isConfigured() {
-  return activeProvider() === 'api-football'
-    ? !!process.env.API_FOOTBALL_KEY
-    : !!process.env.FOOTBALL_DATA_TOKEN
+  const p = activeProvider()
+  if (p === 'espn')         return true                       // public API, no key
+  if (p === 'api-football') return !!process.env.API_FOOTBALL_KEY
+  return !!process.env.FOOTBALL_DATA_TOKEN
 }
 async function fetchFromProvider() {
-  return activeProvider() === 'api-football' ? fetchApiFootball() : fetchFootballData()
+  const p = activeProvider()
+  if (p === 'espn')         return fetchEspn()
+  if (p === 'api-football') return fetchApiFootball()
+  return fetchFootballData()
 }
 
 // ─── Processing: match scores → match_scores table (score-prediction system) ─
