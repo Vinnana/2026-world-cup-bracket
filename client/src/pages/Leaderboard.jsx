@@ -291,52 +291,52 @@ export default function Leaderboard() {
             return (
               <div
                 key={entry.user_id}
-                className={`flex items-center justify-between py-3 px-1 ${isMe ? 'text-fifa-gold' : ''}`}
+                className={`py-3 px-1 ${isMe ? 'text-fifa-gold' : ''}`}
               >
-                {/* Left: rank medal + name + rank-change arrow */}
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className="text-xl w-8 text-center shrink-0">
-                    {MEDALS[i] ?? <span className="text-sm text-gray-400">{i + 1}.</span>}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="font-semibold truncate">
-                        {displayName(entry.username)}
-                      </span>
-                      {isMe
-                        ? <span className="text-xs text-gray-500 shrink-0">(you)</span>
-                        : realName && <span className="text-xs text-gray-500 font-normal shrink-0">({realName})</span>
-                      }
-                      {/* Live rank movement arrow (while matches are in play) */}
-                      {showingLive && rankDelta !== 0 && (
-                        <span className={`text-[11px] font-bold leading-none ${
-                          rankDelta > 0 ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {rankDelta > 0 ? `▲${rankDelta}` : `▼${Math.abs(rankDelta)}`}
+                <div className="flex items-center justify-between gap-2">
+                  {/* Left: rank medal + name + rank-change arrow */}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className="text-xl w-8 text-center shrink-0">
+                      {MEDALS[i] ?? <span className="text-sm text-gray-400">{i + 1}.</span>}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-baseline gap-1.5 min-w-0">
+                        <span className="font-semibold truncate">
+                          {displayName(entry.username)}
                         </span>
-                      )}
-                      {/* No-change dash when live is active but rank didn't move */}
-                      {showingLive && rankDelta === 0 && bonus > 0 && (
-                        <span className="text-[11px] text-gray-600 leading-none">—</span>
-                      )}
-                      {/* Post-game movement vs the standings before the last game */}
-                      {postDelta != null && (
-                        postDelta > 0 ? (
-                          <span className="text-[11px] font-bold text-green-400 leading-none" title="Climbed since last game">▲{postDelta}</span>
-                        ) : postDelta < 0 ? (
-                          <span className="text-[11px] font-bold text-red-400 leading-none" title="Dropped since last game">▼{Math.abs(postDelta)}</span>
-                        ) : (
-                          <span className="text-[11px] text-gray-500 leading-none" title="No change since last game">—</span>
-                        )
-                      )}
+                        {isMe
+                          ? <span className="text-xs text-gray-500 shrink-0">(you)</span>
+                          : realName && <span className="text-xs text-gray-500 font-normal shrink-0">({realName})</span>
+                        }
+                        {/* Live rank movement arrow (while matches are in play) */}
+                        {showingLive && rankDelta !== 0 && (
+                          <span className={`text-[11px] font-bold leading-none shrink-0 ${
+                            rankDelta > 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {rankDelta > 0 ? `▲${rankDelta}` : `▼${Math.abs(rankDelta)}`}
+                          </span>
+                        )}
+                        {/* No-change dash when live is active but rank didn't move */}
+                        {showingLive && rankDelta === 0 && bonus > 0 && (
+                          <span className="text-[11px] text-gray-600 leading-none shrink-0">—</span>
+                        )}
+                        {/* Post-game movement vs the standings before the last game */}
+                        {postDelta != null && (
+                          postDelta > 0 ? (
+                            <span className="text-[11px] font-bold text-green-400 leading-none shrink-0" title="Climbed since last game">▲{postDelta}</span>
+                          ) : postDelta < 0 ? (
+                            <span className="text-[11px] font-bold text-red-400 leading-none shrink-0" title="Dropped since last game">▼{Math.abs(postDelta)}</span>
+                          ) : (
+                            <span className="text-[11px] text-gray-500 leading-none shrink-0" title="No change since last game">—</span>
+                          )
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-600">{entry.picks_count} picks</span>
                     </div>
-                    <span className="text-xs text-gray-600">{entry.picks_count} picks</span>
                   </div>
-                </div>
 
-                {/* Right: points + live bonus badge(s) */}
-                <div className="text-right shrink-0 ml-2">
-                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                  {/* Right: total points + win% (compact, so the name keeps its width) */}
+                  <div className="text-right shrink-0">
                     <div>
                       <span className={`font-black text-xl tabular-nums ${
                         showingLive && bonus > 0 ? (isMe ? 'text-fifa-gold' : 'text-white') : ''
@@ -345,11 +345,27 @@ export default function Leaderboard() {
                       </span>
                       <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
                     </div>
-                    {/* One tier-colored chip per live game, shown separately so two
-                        overlapping matches aren't merged into a single number. Flags
-                        label each game when more than one is in play; the status dot
-                        inherits the tier color and pulses while that game is live. */}
-                    {showingLive && liveBreakdown.map(b => {
+                    {entry.win_pct != null && (
+                      <div className={`text-xs font-semibold tabular-nums ${
+                        entry.win_pct >= 30 ? 'text-green-400'  :
+                        entry.win_pct >= 15 ? 'text-yellow-400' :
+                        entry.win_pct >= 10 ? 'text-orange-400' :
+                        entry.win_pct >= 5  ? 'text-orange-500' :
+                                              'text-red-700'
+                      }`}>
+                        {entry.win_pct.toFixed(1)}% to win
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live points — one tier-colored chip per game, on its own line so
+                    overlapping games are shown separately without squeezing the name.
+                    Flags label each game when more than one is live; the status dot
+                    inherits the tier color and pulses while that game is in play. */}
+                {showingLive && liveBreakdown.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5 pl-11">
+                    {liveBreakdown.map(b => {
                       const m = matchById[b.id]
                       const showFlags = multiLive && m && typeof m.home === 'string' && typeof m.away === 'string'
                       const liveDot = b.status === 'live' || b.status === 'ht'
@@ -362,19 +378,7 @@ export default function Leaderboard() {
                       )
                     })}
                   </div>
-                  {/* Win % — only show when not live, or keep subtle */}
-                  {entry.win_pct != null && (
-                    <div className={`text-xs font-semibold tabular-nums ${
-                      entry.win_pct >= 30 ? 'text-green-400'  :
-                      entry.win_pct >= 15 ? 'text-yellow-400' :
-                      entry.win_pct >= 10 ? 'text-orange-400' :
-                      entry.win_pct >= 5  ? 'text-orange-500' :
-                                            'text-red-700'
-                    }`}>
-                      {entry.win_pct.toFixed(1)}% to win
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             )
           })}
