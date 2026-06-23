@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { picks as picksApi, liveScores as liveScoresApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getRealName } from '../utils/nicknames'
+import { getFlag } from '../utils/flags'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 
@@ -102,24 +103,30 @@ export default function Leaderboard() {
   const hasActiveLive = pendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
   // Any pending ESPN data at all (live OR just-finished but unconfirmed)
   const hasPending    = pendingMatches.length > 0
+  // When 2+ games overlap, label each chip with the match's flags to tell them apart
+  const multiLive     = pendingMatches.length > 1
+  const matchById     = {}
+  for (const m of allPicksData?.matches || []) matchById[m.id] = m
 
-  // Compute live bonus per user (and whether they actually have a pick in play,
-  // so a wrong live pick can show a red ✗ rather than being hidden as a 0)
+  // Compute live points per user. Keep the summed bonus for the total/ranking,
+  // plus a per-match breakdown so overlapping games are shown separately.
   const liveBonusMap = {}
-  const hasPendingPickMap = {}
+  const liveBreakdownMap = {}   // user_id → [{ id, pts, status }] (one per game they picked)
   if (locked && allPicksData && hasPending) {
     for (const entry of leaderboard) {
       const picks = userPicksMap[entry.user_id] || {}
-      let bonus = 0, hasPick = false
+      let bonus = 0
+      const breakdown = []
       for (const [matchId, s] of pendingMatches) {
         const p = picks[matchId]
         if (p && p.home_goals != null) {
-          hasPick = true
-          bonus += scoreMatchClient(p, s.home_score, s.away_score)
+          const pts = scoreMatchClient(p, s.home_score, s.away_score)
+          bonus += pts
+          breakdown.push({ id: matchId, pts, status: s.status })
         }
       }
       liveBonusMap[entry.user_id] = bonus
-      hasPendingPickMap[entry.user_id] = hasPick
+      liveBreakdownMap[entry.user_id] = breakdown
     }
   }
 
@@ -279,7 +286,7 @@ export default function Leaderboard() {
 
             const displayTotal = showingLive ? entry.liveTotal : entry.total
             const bonus        = entry.liveBonus || 0
-            const hasPendingPick = hasPendingPickMap[entry.user_id]
+            const liveBreakdown  = liveBreakdownMap[entry.user_id] || []
 
             return (
               <div
@@ -327,9 +334,9 @@ export default function Leaderboard() {
                   </div>
                 </div>
 
-                {/* Right: points + live bonus badge */}
+                {/* Right: points + live bonus badge(s) */}
                 <div className="text-right shrink-0 ml-2">
-                  <div className="flex items-center justify-end gap-1.5">
+                  <div className="flex items-center justify-end gap-1.5 flex-wrap">
                     <div>
                       <span className={`font-black text-xl tabular-nums ${
                         showingLive && bonus > 0 ? (isMe ? 'text-fifa-gold' : 'text-white') : ''
@@ -338,15 +345,22 @@ export default function Leaderboard() {
                       </span>
                       <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
                     </div>
-                    {/* Live points chip — colored by scoring tier (+10/+6/+4/✗).
-                        The status dot inherits the tier color (bg-current) so the
-                        whole badge is one color; it pulses while a match is live. */}
-                    {showingLive && hasPendingPick && (
-                      <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${liveBonusChipClass(bonus)}`}>
-                        {bonus > 0 ? `+${bonus}` : '✗'}
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full bg-current ${hasActiveLive ? 'animate-pulse' : 'opacity-60'}`} />
-                      </span>
-                    )}
+                    {/* One tier-colored chip per live game, shown separately so two
+                        overlapping matches aren't merged into a single number. Flags
+                        label each game when more than one is in play; the status dot
+                        inherits the tier color and pulses while that game is live. */}
+                    {showingLive && liveBreakdown.map(b => {
+                      const m = matchById[b.id]
+                      const showFlags = multiLive && m && typeof m.home === 'string' && typeof m.away === 'string'
+                      const liveDot = b.status === 'live' || b.status === 'ht'
+                      return (
+                        <span key={b.id} className={`inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${liveBonusChipClass(b.pts)}`}>
+                          {showFlags && <span className="text-[10px] leading-none">{getFlag(m.home)}{getFlag(m.away)}</span>}
+                          {b.pts > 0 ? `+${b.pts}` : '✗'}
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full bg-current ${liveDot ? 'animate-pulse' : 'opacity-60'}`} />
+                        </span>
+                      )
+                    })}
                   </div>
                   {/* Win % — only show when not live, or keep subtle */}
                   {entry.win_pct != null && (
