@@ -148,6 +148,13 @@ export const admin = {
   knockoutOpen: (open) =>
     api.post('/admin/knockout-open', { open }),
 
+  knockoutLock: (locked, lock_time) =>
+    api.post('/admin/knockout-lock', { locked, lock_time }),
+
+  /** Save/clear the knockout auto-lock schedule without immediately locking */
+  knockoutSchedule: (lock_time) =>
+    api.post('/admin/knockout-lock-schedule', { lock_time }),
+
   report: () =>
     api.get('/admin/report'),
 
