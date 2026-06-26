@@ -943,7 +943,7 @@ export default function ScorePicks() {
             }`}>
               {knockoutLocked
                 ? '🔒 Knockout picks are locked.'
-                : '⚡ Knockout Phase is open — predict scores for each matchup. Round-of-32 shows the real teams; later rounds show your predicted matchup (score counts only if your matchup is right).'}
+                : '⚡ Knockout is open — predict a scoreline for each matchup. R32 shows the real teams; later rounds show your predicted matchup (the scoreline scores only if your matchup is right). Pick who advances over in 🏆 My Bracket — that’s where the +10-per-round points come from.'}
             </div>
             {koRounds.map(round => {
               const rMatches = knockoutMatches.filter(m => m.round === round)
