@@ -147,10 +147,17 @@ export default function MyBracket() {
           </div>
         ) : (
           <div>
-            <p className="text-gray-400 text-sm mb-4">
-              Click a team to pick them to advance. Round-of-32 teams are the real matchups;
-              later rounds fill in from your own winner picks. {knockoutLocked && 'Picks are locked.'}
-            </p>
+            <div className="card border-fifa-gold/40 mb-4 text-sm text-gray-300 space-y-1.5">
+              <p className="font-semibold text-fifa-gold">🏆 How the knockout works</p>
+              <p><span className="text-white font-medium">1.</span> Here, tap a team to send them through each round — Round of 32 → 16 → QF → SF → Final, and your champion. Round-of-32 shows the real matchups; later rounds fill in from your own winner picks.</p>
+              <p><span className="text-white font-medium">2.</span> Then head to <span className="text-white font-medium">⚽ Score Picks → Knockout</span> to predict a scoreline for each matchup.</p>
+              <p className="text-gray-400">
+                Scoring per match (max <span className="text-white font-medium">20</span>):
+                <span className="text-green-400 font-medium"> +10</span> if your team advances, plus a
+                <span className="text-white font-medium"> +10/+6/+4</span> scoreline bonus when you also nail the matchup.
+              </p>
+              {knockoutLocked && <p className="text-red-400 font-medium">🔒 Your knockout picks are locked.</p>}
+            </div>
             <KnockoutBracket
               knockout={knockout}
               groupPicks={groupPicks}

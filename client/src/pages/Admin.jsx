@@ -306,6 +306,7 @@ export default function Admin() {
   const [scoreRound,      setScoreRound]      = useState('group_A')
   const [scoreForm,       setScoreForm]       = useState({})  // { match_id: { home: '', away: '', ht: '', at: '' } }
   const [allGroupMatches, setAllGroupMatches] = useState({})  // { A: [...], B: [...] }
+  const [allTeams,        setAllTeams]        = useState([])  // flat list of 48 canonical team names
   const [picksLocked,          setPicksLocked]          = useState(false)
   const [effectivePicksLocked, setEffectivePicksLocked] = useState(false)
   const [picksLockTime,        setPicksLockTime]        = useState('')  // MDT input value
@@ -344,6 +345,7 @@ export default function Admin() {
         ]
       })
       setAllGroupMatches(gm)
+      setAllTeams(letters.flatMap(l => t.data.groups[l].teams).sort((a, b) => a.localeCompare(b)))
     }
     loadMatchesData()
     loadMatchScores()
@@ -437,6 +439,19 @@ export default function Admin() {
       await admin.matchScore(matchId, parseInt(homeGoals), parseInt(awayGoals), homeTeam || undefined, awayTeam || undefined)
       await loadMatchScores()
       flash(`✓ Score saved for ${matchId}`)
+    } catch (err) {
+      flash(`⚠ Save failed: ${err.response?.data?.error || err.message}`)
+    }
+  }
+
+  // Manual backup: set a knockout matchup (teams only, no score) — e.g. to seed the
+  // R32 fixtures if ESPN hasn't published them yet. Leaves any existing score intact.
+  async function handleSaveMatchup(matchId, homeTeam, awayTeam) {
+    if (!homeTeam || !awayTeam) { flash('⚠ Enter both teams'); return }
+    try {
+      await admin.matchScore(matchId, undefined, undefined, homeTeam, awayTeam)
+      await loadMatchScores()
+      flash(`✓ Matchup set for ${matchId}`)
     } catch (err) {
       flash(`⚠ Save failed: ${err.response?.data?.error || err.message}`)
     }
@@ -562,6 +577,11 @@ export default function Admin() {
             </select>
           </div>
 
+          {/* Team-name suggestions for knockout matchup entry */}
+          <datalist id="koTeamNames">
+            {allTeams.map(t => <option key={t} value={t} />)}
+          </datalist>
+
           {/* Match rows */}
           <div className="space-y-2">
             {scoreMatches.map(m => {
@@ -599,6 +619,7 @@ export default function Admin() {
                       ) : (
                         <input
                           className="input text-sm py-1.5"
+                          list="koTeamNames"
                           placeholder={homeDisp !== 'TBD' ? homeDisp : 'Home team name'}
                           value={f.ht != null ? f.ht : (saved && saved.home_team ? saved.home_team : '')}
                           onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), ht: e.target.value } }))}
@@ -616,6 +637,7 @@ export default function Admin() {
                       ) : (
                         <input
                           className="input text-sm py-1.5"
+                          list="koTeamNames"
                           placeholder={awayDisp !== 'TBD' ? awayDisp : 'Away team name'}
                           value={f.at != null ? f.at : (saved && saved.away_team ? saved.away_team : '')}
                           onChange={e => setScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), at: e.target.value } }))}
@@ -654,6 +676,19 @@ export default function Admin() {
                     >
                       Save
                     </button>
+                    {!scoreIsGroup && (
+                      <button
+                        onClick={() => handleSaveMatchup(
+                          m.id,
+                          (f.ht != null ? f.ht : (saved ? saved.home_team : '')),
+                          (f.at != null ? f.at : (saved ? saved.away_team : '')),
+                        )}
+                        title="Save the matchup teams only (no score) — e.g. to seed R32 before kickoff"
+                        className="text-xs font-semibold text-fifa-gold border border-fifa-gold/40 hover:bg-fifa-gold/10 rounded px-2 py-1.5"
+                      >
+                        Set teams
+                      </button>
+                    )}
                     {hasSavedScore && (
                       <button
                         onClick={() => handleDeleteMatchScore(m.id)}
