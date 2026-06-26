@@ -80,7 +80,7 @@ function MatchCard({ match, home, away, picked, actual, onPick, readOnly }) {
   )
 }
 
-export default function KnockoutBracket({ knockout, groupPicks, knockoutPicks, onKnockoutPick, results, readOnly }) {
+export default function KnockoutBracket({ knockout, groupPicks, knockoutPicks, onKnockoutPick, results, readOnly, actualTeams = {} }) {
   if (!knockout || knockout.length === 0) {
     return <div className="text-gray-500 text-sm">Loading bracket…</div>
   }
@@ -99,8 +99,15 @@ export default function KnockoutBracket({ knockout, groupPicks, knockoutPicks, o
             </div>
             <div className="flex flex-col justify-around flex-1 gap-1">
               {matches.map(match => {
-                const home = resolveSide(match.home, groupPicks, knockoutPicks, matchById)
-                const away = resolveSide(match.away, groupPicks, knockoutPicks, matchById)
+                // Once the real matchup is known (group stage done for R32, or a
+                // feeder finished for later rounds), show the actual teams so the
+                // pick is made against reality. Otherwise fall back to the cascade
+                // from the user's own picks (predict-ahead).
+                const at = actualTeams[match.id]
+                const home = at?.home ? { name: at.home, pickable: true }
+                                      : resolveSide(match.home, groupPicks, knockoutPicks, matchById)
+                const away = at?.away ? { name: at.away, pickable: true }
+                                      : resolveSide(match.away, groupPicks, knockoutPicks, matchById)
                 return (
                   <MatchCard
                     key={match.id}
