@@ -38,6 +38,7 @@ export default function Leaderboard() {
   const [allPicksData, setAllPicksData] = useState(null)
   const [espnScores,  setEspnScores]  = useState({})
   const [loading,     setLoading]     = useState(true)
+  const [metric,      setMetric]      = useState('overall') // 'overall' | 'group' | 'knockout'
 
   useEffect(() => {
     let cancelled = false
@@ -74,7 +75,21 @@ export default function Leaderboard() {
 
   if (loading) return <div className="p-8 text-gray-400 text-center">Loading…</div>
 
-  const { leaderboard = [], locked, results_count = 0 } = data || {}
+  const { leaderboard = [], locked, results_count = 0, knockout_open = false } = data || {}
+
+  // Has the knockout phase produced any points yet? (controls whether the
+  // Overall/Group/Knockout toggle is worth showing)
+  const knockoutActive = knockout_open && leaderboard.some(e => (e.knockout_total || 0) > 0)
+  // Effective metric: fall back to Group until knockout is in play.
+  const view = knockoutActive ? metric : 'group'
+  // The base score shown/sorted for a given entry under the active view.
+  const baseScore = (e) =>
+    view === 'group'    ? (e.group_total ?? e.total ?? 0)
+  : view === 'knockout' ? (e.knockout_total || 0)
+  :                       (e.total || 0)
+  // Live provisional points only make sense for in-play (knockout) games, so
+  // don't add them in the Group view.
+  const liveApplies = view !== 'group'
 
   // ── Live scoring computation ────────────────────────────────────────────────
 
@@ -136,11 +151,10 @@ export default function Leaderboard() {
 
   const liveSortedLeaderboard = locked
     ? [...leaderboard]
-        .map(e => ({
-          ...e,
-          liveBonus: liveBonusMap[e.user_id] || 0,
-          liveTotal: e.total + (liveBonusMap[e.user_id] || 0),
-        }))
+        .map(e => {
+          const liveBonus = liveApplies ? (liveBonusMap[e.user_id] || 0) : 0
+          return { ...e, liveBonus, liveTotal: baseScore(e) + liveBonus }
+        })
         .sort((a, b) =>
           b.liveTotal - a.liveTotal ||
           b.win_pct  - a.win_pct  ||
@@ -148,11 +162,11 @@ export default function Leaderboard() {
         )
     : leaderboard
 
-  // Official rank from the server-sorted leaderboard (by total, no live)
+  // Official rank under the active view (no live bonus), for the live-movement arrow.
   const officialRankMap = {} // user_id → 1-based position (submitted only)
-  leaderboard.filter(e => e.has_picks).forEach((e, i) => {
-    officialRankMap[e.user_id] = i + 1
-  })
+  ;[...leaderboard.filter(e => e.has_picks)]
+    .sort((a, b) => baseScore(b) - baseScore(a) || b.win_pct - a.win_pct || a.username.localeCompare(b.username))
+    .forEach((e, i) => { officialRankMap[e.user_id] = i + 1 })
 
   const submitted    = liveSortedLeaderboard.filter(e => e.has_picks)
   const notSubmitted = leaderboard.filter(e => !e.has_picks)
@@ -193,6 +207,27 @@ export default function Leaderboard() {
           <span className="text-gray-600 text-xs">· auto-refreshes</span>
         </div>
       </div>
+
+      {/* ── Overall / Group / Knockout toggle (only once knockout has points) ── */}
+      {knockoutActive && (
+        <div className="flex gap-1 mb-4 bg-gray-800/40 rounded-lg p-1 w-fit border border-gray-700/40">
+          {[
+            ['overall',  'Overall'],
+            ['group',    'Group'],
+            ['knockout', 'Knockout'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setMetric(key)}
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                view === key ? 'bg-fifa-gold text-gray-950' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Live context banner (shown when a match is in progress) ── */}
       {showingLive && locked && (
@@ -279,14 +314,14 @@ export default function Leaderboard() {
             const rankDelta = showingLive ? (offRank - liveRank) : 0
 
             // Post-game movement: current rank vs the standings before the last
-            // game (only when not live; positive = climbed up)
-            const postDelta = (!showingLive && entry.prev_rank != null)
+            // game. prev_rank tracks the cumulative ranking, so only meaningful in Overall.
+            const postDelta = (view === 'overall' && !showingLive && entry.prev_rank != null)
               ? entry.prev_rank - liveRank
               : null
 
-            const displayTotal = showingLive ? entry.liveTotal : entry.total
+            const displayTotal = showingLive ? entry.liveTotal : baseScore(entry)
             const bonus        = entry.liveBonus || 0
-            const liveBreakdown  = liveBreakdownMap[entry.user_id] || []
+            const liveBreakdown  = liveApplies ? (liveBreakdownMap[entry.user_id] || []) : []
 
             return (
               <div
@@ -345,7 +380,7 @@ export default function Leaderboard() {
                       </span>
                       <span className="text-sm font-normal text-gray-500 ml-1">pts</span>
                     </div>
-                    {entry.win_pct != null && (
+                    {view === 'group' && entry.win_pct != null && (
                       <div className={`text-xs font-semibold tabular-nums ${
                         entry.win_pct >= 30 ? 'text-green-400'  :
                         entry.win_pct >= 15 ? 'text-yellow-400' :

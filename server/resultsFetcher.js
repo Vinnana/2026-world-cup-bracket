@@ -540,17 +540,29 @@ function resolveSide(side, groupResults, koResults) {
   return { team: null }
 }
 
-export function processKnockout(db, matches, summary) {
-  const apiByRound = {}
-  for (const m of matches) {
-    const round = STAGE_TO_ROUND[m.stage]
-    if (!round || m.status !== 'FINISHED') continue
-    const home = mapTeam(m.homeTeam?.name)
-    const away = mapTeam(m.awayTeam?.name)
-    if (!home || !away) continue
-    const w = m.score?.winner === 'HOME_TEAM' ? home : m.score?.winner === 'AWAY_TEAM' ? away : null
-    ;(apiByRound[round] ||= []).push({ home, away, winner: w, consumed: false })
-  }
+export async function processKnockout(db, matches, summary) {
+  // Candidate knockout fixtures = any provider match that is NOT a group fixture.
+  // We match purely by resolved teams (not the provider's round label), so this is
+  // robust even if ESPN's stage text is missing/odd. Scheduled matches (no result
+  // yet) are included so we can record the actual matchup teams before kickoff.
+  const candidates = matches
+    .map(m => {
+      const home = mapTeam(m.homeTeam?.name)
+      const away = mapTeam(m.awayTeam?.name)
+      if (!home || !away) return null
+      if (findGroupMatchId(home, away)) return null          // group-stage fixture
+      const finished = m.status === 'FINISHED' || m.status === 'AWARDED'
+      const w = m.score?.winner === 'HOME_TEAM' ? home : m.score?.winner === 'AWAY_TEAM' ? away : null
+      return {
+        home, away,
+        home_goals: finished ? (m.score?.home ?? null) : null,
+        away_goals: finished ? (m.score?.away ?? null) : null,
+        winner: finished ? w : null,
+        finished,
+        consumed: false,
+      }
+    })
+    .filter(Boolean)
 
   const reread = () => {
     const gr = {}
@@ -564,10 +576,9 @@ export function processKnockout(db, matches, summary) {
     return { groupResults: gr, koResults: ko }
   }
 
+  // Process round-by-round so R16+ feeders resolve from already-recorded winners.
   for (const round of ['R32', 'R16', 'QF', 'SF', 'Final']) {
-    const ourMatches = KNOCKOUT.filter(m => m.round === round)
-    const candidates = apiByRound[round] || []
-    for (const M of ourMatches) {
+    for (const M of KNOCKOUT.filter(m => m.round === round)) {
       const { groupResults, koResults } = reread()
       const hs = resolveSide(M.home, groupResults, koResults)
       const as = resolveSide(M.away, groupResults, koResults)
@@ -585,8 +596,19 @@ export function processKnockout(db, matches, summary) {
         return other && wild.allowed.includes(TEAM_GROUP[other])
       })
 
-      if (cand?.winner) {
-        cand.consumed = true
+      if (!cand) continue
+      cand.consumed = true
+
+      // Record the actual matchup teams (ESPN orientation) so the UI shows real
+      // fixtures and scoring orients correctly — including before the match is played.
+      await db.upsertMatchScore(M.id, {
+        home_team:  cand.home,
+        away_team:  cand.away,
+        home_goals: cand.finished ? cand.home_goals : undefined,
+        away_goals: cand.finished ? cand.away_goals : undefined,
+      })
+
+      if (cand.finished && cand.winner) {
         db.upsertMatchResult({
           match_id: M.id, home_team: cand.home, away_team: cand.away,
           winner: cand.winner, round: M.round,
@@ -619,8 +641,8 @@ export async function runResultsSync(db) {
   summary.rateLimit = rateLimitStatus()            // snapshot after all HTTP calls
   await processMatchScores(db, matches, summary)   // ← score-prediction system (awaited — writes must persist)
   processMatchDates(db, matches)
-  processGroups(db, standings, summary)             // ← bracket / group standings
-  processKnockout(db, matches, summary)             // ← bracket / knockout results
+  processGroups(db, standings, summary)             // ← bracket / group standings (needed before knockout)
+  await processKnockout(db, matches, summary)       // ← knockout matchups + winners (records actual teams/orientation)
   return summary
 }
 

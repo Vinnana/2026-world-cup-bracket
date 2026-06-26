@@ -17,6 +17,20 @@ function isLocked() {
   return false
 }
 
+// Phase-2 (knockout) editing window — independent of the group bracket lock.
+function isKnockoutOpen() {
+  return db.getSetting('knockout_picks_open') === 'true'
+}
+function isKnockoutLocked() {
+  if (db.getSetting('knockout_picks_locked') === 'true') return true
+  const lt = db.getSetting('knockout_picks_lock_time')
+  if (lt && Date.now() >= new Date(lt).getTime()) return true
+  return false
+}
+function knockoutEditable() {
+  return isKnockoutOpen() && !isKnockoutLocked()
+}
+
 function buildGroupResultsMap() {
   const groups = {}
   for (const row of db.getGroupResults()) {
@@ -122,17 +136,37 @@ router.get('/my', requireAuth, (req, res) => {
     picks,
     locked: isLocked(),
     lock_time: db.getSetting('lock_time'),
+    knockout_open: isKnockoutOpen(),
+    knockout_locked: isKnockoutLocked(),
   })
 })
 
 // POST /api/brackets
+// Group and knockout portions are gated independently: the group portion follows
+// the bracket lock, the knockout portion follows the Phase-2 open/lock state. This
+// lets participants edit (and later have frozen) their knockout advancement picks
+// without re-opening the group bracket.
 router.post('/', requireAuth, (req, res) => {
-  if (isLocked()) {
-    return res.status(403).json({ error: 'Brackets are locked' })
-  }
   const { picks } = req.body
   if (!picks) return res.status(400).json({ error: 'picks required' })
-  db.upsertBracket(req.user.id, JSON.stringify(picks))
+
+  const groupFrozen = isLocked()
+  const koEditable  = knockoutEditable()
+  if (groupFrozen && !koEditable) {
+    return res.status(403).json({ error: 'Brackets are locked' })
+  }
+
+  const existingRow = db.getBracketByUserId(req.user.id)
+  let existing = {}
+  if (existingRow) { try { existing = JSON.parse(existingRow.picks) } catch {} }
+
+  const merged = {
+    // Freeze the group portion once the group bracket is locked.
+    groups:   groupFrozen ? (existing.groups || {})   : (picks.groups   || existing.groups   || {}),
+    // Only accept knockout edits while Phase 2 is open and not locked.
+    knockout: koEditable  ? (picks.knockout || {})     : (existing.knockout || {}),
+  }
+  db.upsertBracket(req.user.id, JSON.stringify(merged))
   res.json({ success: true })
 })
 

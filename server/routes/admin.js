@@ -16,11 +16,16 @@ router.get('/settings', requireAdmin, (req, res) => {
   const lt = settings.picks_lock_time
   const autoLocked = !!(lt && Date.now() >= new Date(lt).getTime())
   const effective_picks_locked = manualLocked || autoLocked
+  // Effective knockout lock (mirrors isKnockoutLocked in picks.js)
+  const koManual = settings.knockout_picks_locked === 'true'
+  const koLt = settings.knockout_picks_lock_time
+  const koAuto = !!(koLt && Date.now() >= new Date(koLt).getTime())
+  const effective_knockout_locked = koManual || koAuto
   // Parse sync_history JSON → array so the frontend can iterate directly
   let sync_history = []
   try { sync_history = JSON.parse(settings.sync_history || '[]') } catch {}
   const { sync_history: _raw, ...rest } = settings
-  res.json({ ...rest, api_configured: isConfigured(), results_provider: activeProvider(), effective_picks_locked, sync_history })
+  res.json({ ...rest, api_configured: isConfigured(), results_provider: activeProvider(), effective_picks_locked, effective_knockout_locked, sync_history })
 })
 
 // Toggle scheduled auto-fetching of results.
@@ -195,6 +200,21 @@ router.post('/knockout-open', requireAdmin, (req, res) => {
   const { open } = req.body
   db.setSetting('knockout_picks_open', open ? 'true' : 'false')
   res.json({ success: true, open })
+})
+
+// Lock / unlock knockout picks (separate from the group-stage picks lock)
+router.post('/knockout-lock', requireAdmin, (req, res) => {
+  const { locked, lock_time } = req.body
+  db.setSetting('knockout_picks_locked', locked ? 'true' : 'false')
+  if (lock_time !== undefined) db.setSetting('knockout_picks_lock_time', lock_time || '')
+  res.json({ success: true, locked })
+})
+
+// Save/clear the knockout auto-lock schedule without changing the locked flag
+router.post('/knockout-lock-schedule', requireAdmin, (req, res) => {
+  const { lock_time } = req.body
+  db.setSetting('knockout_picks_lock_time', lock_time || '')
+  res.json({ success: true, lock_time: lock_time || '' })
 })
 
 // ── Comprehensive picks report (admin only) ───────────────────────────────────

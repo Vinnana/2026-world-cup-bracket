@@ -3,9 +3,13 @@ import db from '../database.js'
 import { requireAuth, optionalAuth } from '../middleware/auth.js'
 import { ALL_MATCHES } from '../matches.js'
 import { scoreMatch, computeAllScores } from '../scoring.js'
+import { computeKnockoutScores, buildKnockoutActuals } from '../knockoutScoring.js'
 import { MATCH_DATES } from '../schedule.js'
 
 const router = Router()
+
+// Group-stage match ids (m1–m72) — used to keep group and knockout scoring separate.
+const GROUP_IDS = new Set(ALL_MATCHES.filter(m => m.round === 'Group').map(m => m.id))
 
 // ── Win-probability Monte Carlo ──────────────────────────────────────────────
 // Poisson RNG via Knuth's algorithm — matches FIFA WC scoring distribution
@@ -128,6 +132,36 @@ function isKnockoutOpen() {
   return db.getSetting('knockout_picks_open') === 'true'
 }
 
+// Separate lock for knockout picks (mirrors the group-stage lock). Knockout picks
+// are editable only while the phase is open AND not yet locked.
+function isKnockoutLocked() {
+  if (db.getSetting('knockout_picks_locked') === 'true') return true
+  const lockTime = db.getSetting('knockout_picks_lock_time')
+  if (lockTime && Date.now() >= new Date(lockTime).getTime()) return true
+  return false
+}
+function knockoutEditable() {
+  return isKnockoutOpen() && !isKnockoutLocked()
+}
+
+// Assemble the knockout scoring inputs shared by the leaderboard/all endpoints.
+// Returns { [user_id]: { total, breakdown } } from the new knockout engine.
+function knockoutTotalsByUser(users, allPicks) {
+  const actuals = buildKnockoutActuals(db.getAllMatchScores(), db.getKnockoutResults())
+  const bracketsByUser = {}
+  for (const u of users) {
+    const row = db.getBracketByUserId(u.id)
+    if (!row) continue
+    try { bracketsByUser[u.id] = JSON.parse(row.picks) } catch { /* skip malformed */ }
+  }
+  const scorePicksByUser = {}
+  for (const p of allPicks) {
+    if (GROUP_IDS.has(p.match_id)) continue   // knockout score picks only
+    ;(scorePicksByUser[p.user_id] ||= {})[p.match_id] = { home_goals: p.home_goals, away_goals: p.away_goals }
+  }
+  return computeKnockoutScores(bracketsByUser, scorePicksByUser, actuals)
+}
+
 // ── GET /api/picks/my ────────────────────────────────────────────────────────
 // Current user's picks, annotated with pts where results are available
 router.get('/my', requireAuth, (req, res) => {
@@ -146,6 +180,7 @@ router.get('/my', requireAuth, (req, res) => {
     picks: annotated,
     locked: isPicksLocked(),
     knockout_open: isKnockoutOpen(),
+    knockout_locked: isKnockoutLocked(),
   })
 })
 
@@ -160,8 +195,12 @@ router.delete('/my', requireAuth, (req, res) => {
 
 // ── POST /api/picks ──────────────────────────────────────────────────────────
 // Batch upsert score picks. Body: { picks: [{ match_id, home_goals, away_goals }] }
+// Group and knockout picks are gated independently: group picks follow the group
+// lock, knockout picks follow the (separate) knockout open + lock state. This lets
+// knockout picks be saved even though the group stage is already locked.
 router.post('/', requireAuth, (req, res) => {
-  if (isPicksLocked()) return res.status(403).json({ error: 'Picks are locked' })
+  const groupLocked   = isPicksLocked()
+  const koEditable    = knockoutEditable()
 
   const { picks } = req.body
   if (!Array.isArray(picks)) return res.status(400).json({ error: 'picks must be an array' })
@@ -175,12 +214,14 @@ router.post('/', requireAuth, (req, res) => {
     const ag = parseInt(away_goals)
     if (isNaN(hg) || isNaN(ag) || hg < 0 || ag < 0 || hg > 30 || ag > 30) continue
 
-    // Find the match
     const match = ALL_MATCHES.find(m => m.id === match_id)
     if (!match) continue
 
-    // Knockout picks require phase 2 to be open
-    if (match.round !== 'Group' && !isKnockoutOpen()) continue
+    if (match.round === 'Group') {
+      if (groupLocked) continue          // group picks frozen
+    } else {
+      if (!koEditable) continue          // knockout closed or locked
+    }
 
     db.upsertScorePick(req.user.id, match_id, hg, ag)
     saved++
@@ -212,9 +253,10 @@ router.get('/matches', optionalAuth, (req, res) => {
   res.json({
     matches: ALL_MATCHES,
     results: resultMap,
-    team_overrides: teamOverrides,
+    team_overrides: teamOverrides,   // actual knockout home/away teams once known
     locked: isPicksLocked(),
     knockout_open: isKnockoutOpen(),
+    knockout_locked: isKnockoutLocked(),
     match_dates: MATCH_DATES,
   })
 })
@@ -224,20 +266,33 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
   const allPicks = db.getAllScorePicks()
   const allScores = db.getAllMatchScores()
   const users = db.getAllUsers()
-  const computedScores = computeAllScores(allPicks, allScores)
-
   const players = users.filter(u => !u.is_admin)
-  const winPcts = computeWinPcts(allPicks, allScores, players, computedScores)
+
+  // Group-stage scoring is computed over GROUP picks only, so knockout score
+  // picks never leak into the group total (and the group standings are identical
+  // to before Phase 2). Knockout points come from the dedicated engine.
+  const groupPicks = allPicks.filter(p => GROUP_IDS.has(p.match_id))
+  const groupScores = computeAllScores(groupPicks, allScores)
+  const koScores = knockoutTotalsByUser(players, allPicks)
+
+  // Win % stays a group-stage projection (shown only in the Group view client-side).
+  const winPcts = computeWinPcts(groupPicks, allScores, players, groupScores)
 
   const leaderboard = players
-    .map(u => ({
-      user_id: u.id,
-      username: u.username,
-      total: computedScores[u.id]?.total || 0,
-      has_picks: allPicks.some(p => p.user_id === u.id),
-      picks_count: allPicks.filter(p => p.user_id === u.id).length,
-      win_pct: winPcts[u.id] ?? 0,
-    }))
+    .map(u => {
+      const group_total = groupScores[u.id]?.total || 0
+      const knockout_total = koScores[u.id]?.total || 0
+      return {
+        user_id: u.id,
+        username: u.username,
+        group_total,
+        knockout_total,
+        total: group_total + knockout_total,   // cumulative (Overall view)
+        has_picks: allPicks.some(p => p.user_id === u.id),
+        picks_count: allPicks.filter(p => p.user_id === u.id).length,
+        win_pct: winPcts[u.id] ?? 0,
+      }
+    })
     .sort((a, b) => b.total - a.total || b.win_pct - a.win_pct || a.username.localeCompare(b.username))
 
   const results_count = allScores.filter(s => s.home_goals != null).length
@@ -272,6 +327,7 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
     leaderboard,
     locked: isPicksLocked(),
     knockout_open: isKnockoutOpen(),
+    knockout_locked: isKnockoutLocked(),
     results_count,
   })
 })
@@ -290,25 +346,34 @@ router.get('/all', optionalAuth, (req, res) => {
   const allPicks = db.getAllScorePicks()
   const allScores = db.getAllMatchScores()
   const users = db.getAllUsers()
-  const computedScores = computeAllScores(allPicks, allScores)
+  const players = users.filter(u => !u.is_admin)   // admins don't participate
+
+  // Group breakdown over group picks only (unchanged group display); knockout via engine.
+  const groupPicks = allPicks.filter(p => GROUP_IDS.has(p.match_id))
+  const groupScores = computeAllScores(groupPicks, allScores)
+  const koScores = knockoutTotalsByUser(players, allPicks)
 
   const resultMap = {}
   for (const s of allScores) resultMap[s.match_id] = s
 
-  const byUser = users
-    .filter(u => !u.is_admin)   // admins don't participate — exclude from all-picks view
+  const byUser = players
     .map(u => {
       const userPicks = allPicks.filter(p => p.user_id === u.id)
       const pickMap = {}
       for (const p of userPicks) {
         pickMap[p.match_id] = { home_goals: p.home_goals, away_goals: p.away_goals }
       }
+      const group_total = groupScores[u.id]?.total || 0
+      const knockout_total = koScores[u.id]?.total || 0
       return {
         user_id: u.id,
         username: u.username,
         picks: pickMap,
-        total: computedScores[u.id]?.total || 0,
-        breakdown: computedScores[u.id]?.breakdown || {},
+        group_total,
+        knockout_total,
+        total: group_total + knockout_total,
+        breakdown: groupScores[u.id]?.breakdown || {},           // group per-match points
+        knockout_breakdown: koScores[u.id]?.breakdown || {},     // { mId: { advance, score, total } }
       }
     })
     .sort((a, b) => b.total - a.total)
@@ -319,6 +384,7 @@ router.get('/all', optionalAuth, (req, res) => {
     matches: ALL_MATCHES,
     results: resultMap,
     knockout_open: isKnockoutOpen(),
+    knockout_locked: isKnockoutLocked(),
     match_dates: MATCH_DATES,
   })
 })

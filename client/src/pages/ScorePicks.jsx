@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, forwardRef } from 'react'
-import { picks as picksApi, liveScores as liveApi } from '../api'
+import { picks as picksApi, liveScores as liveApi, brackets as bracketsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
 import { jsPDF } from 'jspdf'
@@ -366,6 +366,8 @@ export default function ScorePicks() {
   const [matchDates,    setMatchDates]    = useState({})   // { match_id: utcDate ISO string }
   const [locked,        setLocked]        = useState(false)
   const [knockoutOpen,  setKnockoutOpen]  = useState(false)
+  const [knockoutLocked, setKnockoutLocked] = useState(false)
+  const [bracketPicks,  setBracketPicks]  = useState({ groups: {}, knockout: {} })
   const [loading,       setLoading]       = useState(true)
   const [tab,           setTab]           = useState('group')
   const [viewMode,      setViewMode]      = useState('upcoming') // 'upcoming' | 'completed' | 'group'
@@ -377,9 +379,10 @@ export default function ScorePicks() {
   // Load matches + my picks
   async function load() {
     try {
-      const [matchRes, myRes] = await Promise.all([
+      const [matchRes, myRes, bracketRes] = await Promise.all([
         picksApi.matches(),
         picksApi.my(),
+        bracketsApi.my().catch(() => null),   // for predicted knockout matchups
       ])
 
       setAllMatches(matchRes.data.matches || [])
@@ -388,6 +391,13 @@ export default function ScorePicks() {
       setMatchDates(matchRes.data.match_dates || {})
       setLocked(matchRes.data.locked)
       setKnockoutOpen(matchRes.data.knockout_open)
+      setKnockoutLocked(!!matchRes.data.knockout_locked)
+      if (bracketRes?.data?.picks) {
+        setBracketPicks({
+          groups:   bracketRes.data.picks.groups   || {},
+          knockout: bracketRes.data.picks.knockout || {},
+        })
+      }
 
       const pickMap = {}
       for (const p of (myRes.data.picks || [])) {
@@ -455,6 +465,29 @@ export default function ScorePicks() {
   // Derived data
   const groupMatches = allMatches.filter(m => m.round === 'Group')
   const knockoutMatches = allMatches.filter(m => m.round !== 'Group')
+  const knockoutEditable = knockoutOpen && !knockoutLocked
+
+  // Resolve the teams to display for each knockout match: the ACTUAL matchup once
+  // known (real R32 fixtures, or later rounds as they resolve), otherwise the
+  // participant's OWN predicted matchup from their bracket (predict-ahead).
+  const resolvePredicted = (side) => {
+    if (typeof side === 'string') {
+      if (side.startsWith('3RD:')) return null
+      const pos = side[0], g = side[1]
+      const gp = bracketPicks.groups?.[g]
+      return gp ? (pos === '1' ? gp.first : gp.second) : null
+    }
+    if (side?.win) return bracketPicks.knockout?.[side.win] || null
+    return null
+  }
+  const knockoutOverrides = {}
+  for (const m of knockoutMatches) {
+    const actual = teamOverrides[m.id]
+    if (actual?.home && actual?.away) { knockoutOverrides[m.id] = actual; continue }
+    const home = resolvePredicted(m.home)
+    const away = resolvePredicted(m.away)
+    if (home || away) knockoutOverrides[m.id] = { home, away }
+  }
   const upcomingGroupMatches  = groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null)
   const completedGroupMatches = groupMatches.filter(m => results[m.id]?.home_goals != null)
   const groups = [...new Set(groupMatches.map(m => m.group))].sort()
@@ -678,11 +711,11 @@ export default function ScorePicks() {
         </div>
       </div>
 
-      {/* Status / lock banner */}
-      {locked ? (
+      {/* Status / lock banner (group tab; the knockout tab shows its own status) */}
+      {tab !== 'knockout' && (locked ? (
         <div className="mb-4 flex items-center gap-2 bg-red-900/30 border border-red-800/50 text-red-300 rounded-lg px-4 py-2.5 text-sm">
           <span>🔒</span>
-          <span className="font-medium">Picks are locked</span>
+          <span className="font-medium">Group picks are locked</span>
           <span className="text-red-400/70 ml-auto">view-only</span>
         </div>
       ) : (
@@ -691,7 +724,7 @@ export default function ScorePicks() {
           <span>Picks open — type a score and cursor auto-advances, saves on completion</span>
           {statusMsg && <span className="ml-auto text-xs font-medium text-green-300">{statusMsg}</span>}
         </div>
-      )}
+      ))}
 
       {/* Scoring legend */}
       <div className="mb-5 flex items-center gap-3 text-xs flex-wrap">
@@ -903,8 +936,14 @@ export default function ScorePicks() {
           </div>
         ) : (
           <div>
-            <div className="mb-4 bg-blue-900/20 border border-blue-800/40 text-blue-300 rounded-lg px-4 py-2.5 text-sm">
-              ⚡ Knockout Phase is open — predict scores for all knockout matches below
+            <div className={`mb-4 rounded-lg px-4 py-2.5 text-sm border ${
+              knockoutLocked
+                ? 'bg-red-900/20 border-red-800/40 text-red-300'
+                : 'bg-blue-900/20 border-blue-800/40 text-blue-300'
+            }`}>
+              {knockoutLocked
+                ? '🔒 Knockout picks are locked.'
+                : '⚡ Knockout Phase is open — predict scores for each matchup. Round-of-32 shows the real teams; later rounds show your predicted matchup (score counts only if your matchup is right).'}
             </div>
             {koRounds.map(round => {
               const rMatches = knockoutMatches.filter(m => m.round === round)
@@ -917,9 +956,9 @@ export default function ScorePicks() {
                   matches={rMatches}
                   picks={myPicks}
                   results={results}
-                  locked={locked}
+                  locked={!knockoutEditable}
                   onSave={handleSave}
-                  teamOverrides={teamOverrides}
+                  teamOverrides={knockoutOverrides}
                 />
               )
             })}

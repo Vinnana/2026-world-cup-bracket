@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { brackets, tournament } from '../api'
+import { brackets, tournament, picks as picksApi } from '../api'
 import GroupPicks from '../components/GroupPicks'
 import KnockoutBracket from '../components/KnockoutBracket'
 
@@ -10,8 +10,11 @@ export default function MyBracket() {
   const [groupPicks, setGroupPicks] = useState({})
   const [knockoutPicks, setKnockoutPicks] = useState({})
   const [results, setResults] = useState({})
+  const [actualTeams, setActualTeams] = useState({})   // { mId: { home, away } } actual knockout matchups
   const [locked, setLocked] = useState(false)
   const [lockTime, setLockTime] = useState('')
+  const [knockoutOpen, setKnockoutOpen] = useState(false)
+  const [knockoutLocked, setKnockoutLocked] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -29,12 +32,23 @@ export default function MyBracket() {
       setKnockoutPicks(picks.knockout || {})
       setLocked(myBracket.data.locked)
       setLockTime(myBracket.data.lock_time)
+      setKnockoutOpen(!!myBracket.data.knockout_open)
+      setKnockoutLocked(!!myBracket.data.knockout_locked)
 
       const res = await brackets.results()
       setResults(res.data)
+
+      // Actual knockout matchups (real teams + orientation) once known.
+      try {
+        const m = await picksApi.matches()
+        setActualTeams(m.data.team_overrides || {})
+      } catch { /* optional */ }
     }
     load()
   }, [])
+
+  // Knockout bracket is editable only while Phase 2 is open and not yet locked.
+  const knockoutEditable = knockoutOpen && !knockoutLocked
 
   async function handleSave() {
     setSaving(true)
@@ -67,11 +81,17 @@ export default function MyBracket() {
           <h1 className="text-2xl font-bold text-white">My Bracket</h1>
           {locked && (
             <p className="text-red-400 text-sm mt-1">
-              🔒 Brackets are locked{lockTime ? ` (since ${new Date(lockTime).toLocaleString()})` : ''}
+              🔒 Group bracket locked{lockTime ? ` (since ${new Date(lockTime).toLocaleString()})` : ''}
             </p>
           )}
+          {knockoutOpen && knockoutLocked && (
+            <p className="text-red-400 text-sm mt-1">🔒 Knockout picks are locked</p>
+          )}
+          {knockoutEditable && (
+            <p className="text-green-400 text-sm mt-1">⚡ Knockout bracket is open — pick who advances each round</p>
+          )}
         </div>
-        {!locked && (
+        {(!locked || knockoutEditable) && (
           <div className="flex items-center gap-3">
             {error && <span className="text-red-400 text-sm">{error}</span>}
             {saved && <span className="text-green-400 text-sm">✓ Saved!</span>}
@@ -119,19 +139,29 @@ export default function MyBracket() {
       )}
 
       {tab === 'knockout' && (
-        <div>
-          <p className="text-gray-400 text-sm mb-4">
-            Click a team name to pick them as the match winner. Teams auto-populate from your group stage picks.
-          </p>
-          <KnockoutBracket
-            knockout={knockout}
-            groupPicks={groupPicks}
-            knockoutPicks={knockoutPicks}
-            onKnockoutPick={handleKnockoutPick}
-            results={results}
-            readOnly={locked}
-          />
-        </div>
+        !knockoutOpen ? (
+          <div className="card text-center py-10 text-gray-400">
+            <p className="text-3xl mb-3">⏳</p>
+            <p className="font-medium text-white mb-1">Knockout bracket opens after the group stage</p>
+            <p className="text-sm">Once the admin opens Phase 2, pick who advances each round — and the champion.</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-gray-400 text-sm mb-4">
+              Click a team to pick them to advance. Round-of-32 teams are the real matchups;
+              later rounds fill in from your own winner picks. {knockoutLocked && 'Picks are locked.'}
+            </p>
+            <KnockoutBracket
+              knockout={knockout}
+              groupPicks={groupPicks}
+              knockoutPicks={knockoutPicks}
+              onKnockoutPick={handleKnockoutPick}
+              results={results}
+              actualTeams={actualTeams}
+              readOnly={!knockoutEditable}
+            />
+          </div>
+        )
       )}
     </div>
   )

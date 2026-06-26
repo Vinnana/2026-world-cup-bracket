@@ -311,6 +311,10 @@ export default function Admin() {
   const [picksLockTime,        setPicksLockTime]        = useState('')  // MDT input value
   const [savedPicksLockTime,   setSavedPicksLockTime]   = useState('')  // stored ISO string
   const [knockoutOpen,         setKnockoutOpen]         = useState(false)
+  const [knockoutLocked,          setKnockoutLocked]          = useState(false)
+  const [effectiveKnockoutLocked, setEffectiveKnockoutLocked] = useState(false)
+  const [knockoutLockTime,        setKnockoutLockTime]        = useState('')  // MDT input value
+  const [savedKnockoutLockTime,   setSavedKnockoutLockTime]   = useState('')  // stored ISO string
 
   async function loadMatchScores() {
     const res = await admin.matchScores()
@@ -354,8 +358,13 @@ export default function Admin() {
       setSavedPicksLockTime(stored)
       setPicksLockTime(isoToMT(stored))
       setKnockoutOpen(settings.knockout_picks_open === 'true')
+      setKnockoutLocked(settings.knockout_picks_locked === 'true')
+      setEffectiveKnockoutLocked(!!settings.effective_knockout_locked)
+      const koStored = settings.knockout_picks_lock_time || ''
+      setSavedKnockoutLockTime(koStored)
+      setKnockoutLockTime(isoToMT(koStored))
     }
-  }, [settings.picks_locked, settings.picks_lock_time, settings.knockout_picks_open, settings.effective_picks_locked])
+  }, [settings.picks_locked, settings.picks_lock_time, settings.knockout_picks_open, settings.knockout_picks_locked, settings.knockout_picks_lock_time, settings.effective_picks_locked, settings.effective_knockout_locked])
 
   // Poll the effective lock status every 30 s while the picks tab is open
   useEffect(() => {
@@ -397,6 +406,29 @@ export default function Admin() {
     await admin.knockoutOpen(open)
     setKnockoutOpen(open)
     flash(open ? '⚡ Knockout Phase 2 opened!' : '⏸ Knockout picks closed')
+  }
+
+  async function handleKnockoutLock(locked) {
+    const lockISO = mtToISO(knockoutLockTime)
+    await admin.knockoutLock(locked, lockISO)
+    setKnockoutLocked(locked)
+    setEffectiveKnockoutLocked(locked)
+    setSavedKnockoutLockTime(lockISO)
+    flash(locked ? '🔒 Knockout picks locked' : '🔓 Knockout picks unlocked')
+  }
+
+  async function handleSaveKnockoutSchedule() {
+    const lockISO = mtToISO(knockoutLockTime)
+    await admin.knockoutSchedule(lockISO)
+    setSavedKnockoutLockTime(lockISO)
+    flash('⏱ Knockout auto-lock scheduled')
+  }
+
+  async function handleClearKnockoutSchedule() {
+    await admin.knockoutSchedule('')
+    setSavedKnockoutLockTime('')
+    setKnockoutLockTime('')
+    flash('Knockout auto-lock schedule cleared')
   }
 
   async function handleSaveMatchScore(matchId, homeGoals, awayGoals, homeTeam, awayTeam) {
@@ -753,6 +785,81 @@ export default function Admin() {
               >
                 Close Knockout Phase
               </button>
+            </div>
+
+            {/* Knockout pick lock — separate from the group-stage lock */}
+            <div className="pt-3 border-t border-gray-800 space-y-3">
+              <p className="text-sm">
+                Lock status:{' '}
+                <span className={effectiveKnockoutLocked ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
+                  {effectiveKnockoutLocked ? '🔒 Locked' : '🔓 Editable'}
+                </span>
+                {!knockoutLocked && effectiveKnockoutLocked && (
+                  <span className="ml-2 text-xs text-yellow-400">(triggered by schedule)</span>
+                )}
+              </p>
+              <p className="text-xs text-gray-400">
+                Lock knockout picks before the Round of 32 kicks off. Locking freezes both
+                the bracket and the knockout score picks; the group stage is unaffected.
+              </p>
+
+              {/* Auto-lock schedule */}
+              <div className="space-y-2 bg-gray-800/40 rounded-lg p-3">
+                <label className="block text-sm font-medium text-gray-200">
+                  ⏱ Auto-lock schedule
+                  <span className="ml-2 text-xs font-normal text-gray-400">Mountain Time (MDT · UTC−6)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  className="input w-full"
+                  value={knockoutLockTime}
+                  onChange={e => setKnockoutLockTime(e.target.value)}
+                  disabled={effectiveKnockoutLocked}
+                />
+                {knockoutLockTime && (
+                  <p className="text-xs text-gray-400">→ {formatMT(mtToISO(knockoutLockTime))}</p>
+                )}
+                {savedKnockoutLockTime && (
+                  <p className="text-xs text-yellow-300 flex items-center gap-1">
+                    <span>⏱</span><span>Scheduled: {formatMT(savedKnockoutLockTime)}</span>
+                  </p>
+                )}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={handleSaveKnockoutSchedule}
+                    disabled={!knockoutLockTime || effectiveKnockoutLocked}
+                    className="bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 text-white text-sm font-semibold px-3 py-1.5 rounded-lg"
+                  >
+                    Save Schedule
+                  </button>
+                  {savedKnockoutLockTime && !effectiveKnockoutLocked && (
+                    <button
+                      onClick={handleClearKnockoutSchedule}
+                      className="bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm px-3 py-1.5 rounded-lg"
+                    >
+                      Clear Schedule
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Manual override */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleKnockoutLock(true)}
+                  disabled={effectiveKnockoutLocked}
+                  className="bg-red-700 hover:bg-red-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  Lock Knockout Now
+                </button>
+                <button
+                  onClick={() => handleKnockoutLock(false)}
+                  disabled={!effectiveKnockoutLocked}
+                  className="bg-green-700 hover:bg-green-600 text-white font-bold px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  Unlock
+                </button>
+              </div>
             </div>
           </div>
         </div>
