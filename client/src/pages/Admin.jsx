@@ -520,6 +520,90 @@ export default function Admin() {
     ? (allGroupMatches[scoreGroupLetter] || [])
     : (scoreKoRound ? scoreKoRound.ids.map(id => ({ id, home: 'TBD', away: 'TBD' })) : [])
 
+  // ── Admin edit picks state ───────────────────────────────────────────────
+  const [editUser,         setEditUser]         = useState(null)   // { id, username }
+  const [editPicksData,    setEditPicksData]    = useState(null)   // { scorePicks: map, bracket }
+  const [editPicksLoading, setEditPicksLoading] = useState(false)
+  const [editPicksSubTab,  setEditPicksSubTab]  = useState('scores')
+  const [editScoreRound,   setEditScoreRound]   = useState('group_A')
+  const [editScoreForm,    setEditScoreForm]    = useState({})     // { [match_id]: { home, away } }
+  const [editBracketForm,  setEditBracketForm]  = useState({ groups: {}, knockout: {} })
+  const [editMsg,          setEditMsg]          = useState('')
+
+  function flashEdit(text, err = false) {
+    setEditMsg({ text, err })
+    setTimeout(() => setEditMsg(''), 3000)
+  }
+
+  async function handleSelectEditUser(user) {
+    setEditUser(user)
+    setEditPicksData(null)
+    setEditScoreForm({})
+    setEditPicksLoading(true)
+    try {
+      const res = await admin.getUserPicks(user.id)
+      const d = res.data
+      const scoreMap = {}
+      for (const p of d.scorePicks) scoreMap[p.match_id] = p
+      setEditPicksData({ scoreMap, bracket: d.bracket || { groups: {}, knockout: {} } })
+      setEditBracketForm(d.bracket || { groups: {}, knockout: {} })
+    } catch {
+      flashEdit('Failed to load picks', true)
+    } finally {
+      setEditPicksLoading(false)
+    }
+  }
+
+  async function handleSaveEditScore(matchId) {
+    if (!editUser) return
+    const f = editScoreForm[matchId] || {}
+    const saved = editPicksData?.scoreMap?.[matchId]
+    const home = f.home != null ? f.home : (saved ? String(saved.home_goals) : '')
+    const away = f.away != null ? f.away : (saved ? String(saved.away_goals) : '')
+    if (home === '' || away === '') return
+    try {
+      await admin.setUserScorePick(editUser.id, matchId, parseInt(home), parseInt(away))
+      setEditPicksData(prev => ({
+        ...prev,
+        scoreMap: {
+          ...prev.scoreMap,
+          [matchId]: { ...(prev.scoreMap[matchId] || {}), match_id: matchId, home_goals: parseInt(home), away_goals: parseInt(away) }
+        }
+      }))
+      setEditScoreForm(f => { const n = { ...f }; delete n[matchId]; return n })
+      flashEdit(`✓ ${matchId} saved`)
+    } catch (err) {
+      flashEdit(err.response?.data?.error || 'Save failed', true)
+    }
+  }
+
+  async function handleDeleteEditScore(matchId) {
+    if (!editUser) return
+    try {
+      await admin.deleteUserScorePick(editUser.id, matchId)
+      setEditPicksData(prev => {
+        const m = { ...prev.scoreMap }
+        delete m[matchId]
+        return { ...prev, scoreMap: m }
+      })
+      setEditScoreForm(f => { const n = { ...f }; delete n[matchId]; return n })
+      flashEdit(`✓ ${matchId} cleared`)
+    } catch (err) {
+      flashEdit(err.response?.data?.error || 'Delete failed', true)
+    }
+  }
+
+  async function handleSaveEditBracket() {
+    if (!editUser) return
+    try {
+      await admin.setUserBracket(editUser.id, editBracketForm)
+      setEditPicksData(prev => ({ ...prev, bracket: editBracketForm }))
+      flashEdit('✓ Bracket saved')
+    } catch (err) {
+      flashEdit(err.response?.data?.error || 'Save failed', true)
+    }
+  }
+
   const tabs = [
     { key: 'scores',   label: '⚽ Match Scores' },
     { key: 'sync',     label: '🔄 Live Scores API' },
@@ -527,6 +611,7 @@ export default function Admin() {
     { key: 'report',   label: '📊 Report' },
     { key: 'users',    label: '👥 Users' },
     { key: 'roster',   label: '📋 Roster' },
+    { key: 'editpicks', label: '✏️ Edit Picks' },
   ]
 
   return (
@@ -1506,6 +1591,238 @@ export default function Admin() {
                 )
               })()}
             </div>
+          </div>
+        )
+      })()}
+
+      {/* ── EDIT PICKS tab ─────────────────────────────────────────────── */}
+      {tab === 'editpicks' && (() => {
+        const editScoreIsGroup = editScoreRound.startsWith('group_')
+        const editScoreGroupLetter = editScoreIsGroup ? editScoreRound.replace('group_', '') : null
+        const editScoreKoRound = !editScoreIsGroup ? scoreKoRounds.find(r => r.key === editScoreRound) : null
+        const editScoreMatches = editScoreIsGroup
+          ? (allGroupMatches[editScoreGroupLetter] || [])
+          : (editScoreKoRound ? editScoreKoRound.ids.map(id => ({ id, home: matchScores[id]?.home_team || 'TBD', away: matchScores[id]?.away_team || 'TBD' })) : [])
+
+        const groupLetterList = Object.keys(groups).sort()
+
+        return (
+          <div className="space-y-4">
+            {/* User selector */}
+            <div className="card">
+              <h3 className="font-semibold text-white mb-3">Select participant to edit</h3>
+              <div className="flex flex-wrap gap-2">
+                {users.filter(u => !u.is_admin).map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => handleSelectEditUser(u)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                      editUser?.id === u.id
+                        ? 'bg-fifa-gold text-gray-950'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    {u.username}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {editPicksLoading && (
+              <div className="text-center text-gray-400 py-8">Loading…</div>
+            )}
+
+            {editMsg && (
+              <div className={`rounded-lg px-4 py-2 text-sm ${editMsg.err ? 'bg-red-900/40 text-red-300' : 'bg-green-900/40 text-green-300'}`}>
+                {editMsg.text}
+              </div>
+            )}
+
+            {editUser && editPicksData && !editPicksLoading && (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-semibold">{editUser.username}</span>
+                  <span className="text-gray-500 text-sm">—</span>
+                  <button
+                    onClick={() => setEditPicksSubTab('scores')}
+                    className={`px-3 py-1 rounded text-sm font-medium ${editPicksSubTab === 'scores' ? 'bg-fifa-gold text-gray-950' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+                  >Score Picks</button>
+                  <button
+                    onClick={() => setEditPicksSubTab('bracket')}
+                    className={`px-3 py-1 rounded text-sm font-medium ${editPicksSubTab === 'bracket' ? 'bg-fifa-gold text-gray-950' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+                  >Bracket Picks</button>
+                </div>
+
+                {/* ── Score Picks sub-tab ── */}
+                {editPicksSubTab === 'scores' && (
+                  <div className="card">
+                    <p className="text-xs text-gray-400 mb-3">
+                      Edit score predictions for {editUser.username}. Bypasses lock — changes take effect immediately.
+                    </p>
+                    {/* Round selector */}
+                    <div className="mb-4">
+                      <select className="input" value={editScoreRound} onChange={e => setEditScoreRound(e.target.value)}>
+                        <optgroup label="Group Stage">
+                          {scoreGroupLetters.map(l => <option key={l} value={'group_' + l}>Group {l}</option>)}
+                        </optgroup>
+                        <optgroup label="Knockout">
+                          {scoreKoRounds.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      {editScoreMatches.map(m => {
+                        const saved = editPicksData.scoreMap?.[m.id]
+                        const f = editScoreForm[m.id] || {}
+                        const hasPick = saved && saved.home_goals != null
+                        const homeTeam = editScoreIsGroup ? m.home : (matchScores[m.id]?.home_team || 'TBD')
+                        const awayTeam = editScoreIsGroup ? m.away : (matchScores[m.id]?.away_team || 'TBD')
+                        return (
+                          <div key={m.id} className={`rounded-lg border p-3 ${hasPick ? 'border-green-800/40 bg-green-900/10' : 'border-gray-700/50 bg-gray-800/40'}`}>
+                            <div className="flex items-center gap-2 mb-2 text-xs">
+                              <span className="font-mono text-gray-400">{m.id}</span>
+                              <span className="text-gray-300">{homeTeam} <span className="text-gray-600">v</span> {awayTeam}</span>
+                              {hasPick && (
+                                <span className="text-green-400 font-bold ml-auto">{saved.home_goals}–{saved.away_goals}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number" min="0" max="30"
+                                className="input w-16 text-center font-bold py-1.5 text-sm"
+                                placeholder={hasPick ? String(saved.home_goals) : '0'}
+                                value={f.home != null ? f.home : (hasPick ? String(saved.home_goals) : '')}
+                                onChange={e => setEditScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), home: e.target.value } }))}
+                              />
+                              <span className="text-gray-500 font-bold">–</span>
+                              <input
+                                type="number" min="0" max="30"
+                                className="input w-16 text-center font-bold py-1.5 text-sm"
+                                placeholder={hasPick ? String(saved.away_goals) : '0'}
+                                value={f.away != null ? f.away : (hasPick ? String(saved.away_goals) : '')}
+                                onChange={e => setEditScoreForm(sf => ({ ...sf, [m.id]: { ...(sf[m.id] || {}), away: e.target.value } }))}
+                              />
+                              <button onClick={() => handleSaveEditScore(m.id)} className="btn-primary text-sm py-1.5 px-3">
+                                Save
+                              </button>
+                              {hasPick && (
+                                <button onClick={() => handleDeleteEditScore(m.id)} className="text-xs text-red-400 hover:text-red-300 px-2 py-1">
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Bracket Picks sub-tab ── */}
+                {editPicksSubTab === 'bracket' && (
+                  <div className="card space-y-5">
+                    <p className="text-xs text-gray-400">
+                      Edit bracket picks for {editUser.username}. Bypasses lock — changes take effect immediately.
+                    </p>
+
+                    {/* Group picks */}
+                    <div>
+                      <p className="text-sm font-semibold text-fifa-gold mb-3">Group Stage — Predicted Rankings</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {groupLetterList.map(letter => {
+                          const teamOpts = groups[letter]?.teams || []
+                          const gp = editBracketForm.groups?.[letter] || {}
+                          return (
+                            <div key={letter} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/60">
+                              <p className="text-xs font-bold text-white mb-2">Group {letter}</p>
+                              {[['1st', 'first'], ['2nd', 'second'], ['3rd', 'third']].map(([label, key]) => (
+                                <div key={key} className="flex items-center gap-2 mb-1.5">
+                                  <span className="text-xs text-gray-500 w-6 shrink-0">{label}</span>
+                                  <select
+                                    className="input text-xs py-1 flex-1"
+                                    value={gp[key] || ''}
+                                    onChange={e => setEditBracketForm(prev => ({
+                                      ...prev,
+                                      groups: {
+                                        ...prev.groups,
+                                        [letter]: { ...(prev.groups?.[letter] || {}), [key]: e.target.value }
+                                      }
+                                    }))}
+                                  >
+                                    <option value="">— pick team —</option>
+                                    {teamOpts.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Knockout advancement picks */}
+                    <div>
+                      <p className="text-sm font-semibold text-fifa-gold mb-3">Knockout — Advancement Picks</p>
+                      <div className="space-y-3">
+                        {scoreKoRounds.map(r => (
+                          <div key={r.key}>
+                            <p className="text-xs font-bold text-gray-300 uppercase tracking-wide mb-1.5">{r.label}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {r.ids.map(matchId => {
+                                const ms = matchScores[matchId]
+                                const homeTeam = ms?.home_team || null
+                                const awayTeam = ms?.away_team || null
+                                const currentPick = editBracketForm.knockout?.[matchId] || ''
+                                return (
+                                  <div key={matchId} className="bg-gray-800/50 rounded-lg p-2.5 border border-gray-700/60">
+                                    <div className="text-[10px] text-gray-500 mb-1.5">{matchId} {homeTeam ? `· ${homeTeam} v ${awayTeam}` : ''}</div>
+                                    {homeTeam ? (
+                                      <select
+                                        className="input text-xs py-1 w-full"
+                                        value={currentPick}
+                                        onChange={e => setEditBracketForm(prev => ({
+                                          ...prev,
+                                          knockout: { ...prev.knockout, [matchId]: e.target.value }
+                                        }))}
+                                      >
+                                        <option value="">— no pick —</option>
+                                        <option value={homeTeam}>{homeTeam}</option>
+                                        <option value={awayTeam}>{awayTeam}</option>
+                                      </select>
+                                    ) : (
+                                      <input
+                                        className="input text-xs py-1 w-full"
+                                        list="koTeamNames"
+                                        placeholder="Team name…"
+                                        value={currentPick}
+                                        onChange={e => setEditBracketForm(prev => ({
+                                          ...prev,
+                                          knockout: { ...prev.knockout, [matchId]: e.target.value }
+                                        }))}
+                                      />
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-800">
+                      <button onClick={handleSaveEditBracket} className="btn-primary">
+                        Save Bracket
+                      </button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Saves all group + knockout advancement picks for {editUser.username}.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )
       })()}
