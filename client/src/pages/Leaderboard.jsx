@@ -87,9 +87,10 @@ export default function Leaderboard() {
     view === 'group'    ? (e.group_total ?? e.total ?? 0)
   : view === 'knockout' ? (e.knockout_total || 0)
   :                       (e.total || 0)
-  // Live provisional points only make sense for in-play (knockout) games, so
-  // don't add them in the Group view.
-  const liveApplies = view !== 'group'
+  // Live provisional points apply to whichever standings view is active.
+  // Group only includes group-stage live matches, Knockout only includes knockout
+  // live matches, and Overall includes every unconfirmed live/final score.
+  const liveApplies = true
 
   // ── Live scoring computation ────────────────────────────────────────────────
 
@@ -114,14 +115,24 @@ export default function Leaderboard() {
       })
     : []
 
-  // Matches that are actively in play right now
-  const hasActiveLive = pendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
-  // Any pending ESPN data at all (live OR just-finished but unconfirmed)
-  const hasPending    = pendingMatches.length > 0
-  // When 2+ games overlap, label each chip with the match's flags to tell them apart
-  const multiLive     = pendingMatches.length > 1
-  const matchById     = {}
+  const matchById = {}
   for (const m of allPicksData?.matches || []) matchById[m.id] = m
+
+  const matchBelongsToView = (matchId) => {
+    const match = matchById[matchId]
+    if (view === 'overall') return true
+    if (view === 'group') return match?.round === 'Group'
+    return match && match.round !== 'Group'
+  }
+
+  const viewPendingMatches = pendingMatches.filter(([id]) => matchBelongsToView(id))
+
+  // Matches that are actively in play right now for the selected standings view
+  const hasActiveLive = viewPendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
+  // Any pending ESPN data at all (live OR just-finished but unconfirmed)
+  const hasPending    = viewPendingMatches.length > 0
+  // When 2+ games overlap, label each chip with the match's flags to tell them apart
+  const multiLive     = viewPendingMatches.length > 1
 
   // Compute live points per user. Keep the summed bonus for the total/ranking,
   // plus a per-match breakdown so overlapping games are shown separately.
@@ -132,7 +143,7 @@ export default function Leaderboard() {
       const picks = userPicksMap[entry.user_id] || {}
       let bonus = 0
       const breakdown = []
-      for (const [matchId, s] of pendingMatches) {
+      for (const [matchId, s] of viewPendingMatches) {
         const p = picks[matchId]
         if (p && p.home_goals != null) {
           const pts = scoreMatchClient(p, s.home_score, s.away_score)
@@ -239,8 +250,8 @@ export default function Leaderboard() {
           <span>{hasActiveLive ? '🔴' : '⏳'}</span>
           <span>
             {hasActiveLive
-              ? `Live rankings — points update as matches progress (${pendingMatches.length} match${pendingMatches.length !== 1 ? 'es' : ''} in play)`
-              : `Provisional rankings — ${pendingMatches.length} result${pendingMatches.length !== 1 ? 's' : ''} awaiting admin confirmation`
+              ? `Live rankings — points update as matches progress (${viewPendingMatches.length} match${viewPendingMatches.length !== 1 ? 'es' : ''} in play)`
+              : `Provisional rankings — ${viewPendingMatches.length} result${viewPendingMatches.length !== 1 ? 's' : ''} awaiting admin confirmation`
             }
           </span>
         </div>
