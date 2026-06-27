@@ -300,6 +300,8 @@ export default function MyBracket() {
   const [loading,       setLoading]       = useState(true)
   const [statusMsg,     setStatusMsg]     = useState('')
   const [errorMsg,      setErrorMsg]      = useState('')
+  const [isDirty,       setIsDirty]       = useState(false)
+  const [saving,        setSaving]        = useState(false)
 
   const groupPicksRef    = useRef({})
   const knockoutPicksRef = useRef({})
@@ -388,42 +390,50 @@ export default function MyBracket() {
     }
   }
 
-  async function saveBracket(kp) {
-    try {
-      await brackets.save({ groups: groupPicksRef.current, knockout: kp })
-    } catch (err) {
-      flashMsg(err.response?.data?.error || 'Failed to save', true)
-    }
-  }
+  // Buffer score change locally — no API call until Save
+  const handleSaveScore = useCallback((match_id, home_goals, away_goals) => {
+    setScorePicks(prev => ({ ...prev, [match_id]: { home_goals, away_goals } }))
+    setIsDirty(true)
 
-  const handleSaveScore = useCallback(async (match_id, home_goals, away_goals) => {
-    try {
-      await picksApi.save([{ match_id, home_goals, away_goals }])
-      setScorePicks(prev => ({ ...prev, [match_id]: { home_goals, away_goals } }))
-
-      if (home_goals !== away_goals) {
-        const teams  = resolvedTeamsRef.current[match_id]
-        const winner = home_goals > away_goals ? teams?.home : teams?.away
-        if (winner) {
-          const kp = { ...knockoutPicksRef.current, [match_id]: winner }
-          knockoutPicksRef.current = kp
-          setKnockoutPicks(kp)
-          saveBracket(kp)
-        }
+    // Auto-advance bracket winner locally when score is clear
+    if (home_goals !== away_goals) {
+      const teams  = resolvedTeamsRef.current[match_id]
+      const winner = home_goals > away_goals ? teams?.home : teams?.away
+      if (winner) {
+        const kp = { ...knockoutPicksRef.current, [match_id]: winner }
+        knockoutPicksRef.current = kp
+        setKnockoutPicks(kp)
       }
-      flashMsg('✓ Saved')
-    } catch {
-      flashMsg('Save failed', true)
     }
   }, [])
 
+  // Buffer ET/Pens pick locally — no API call until Save
   const handlePickAdvancement = useCallback((match_id, team) => {
     const kp = { ...knockoutPicksRef.current, [match_id]: team }
     knockoutPicksRef.current = kp
     setKnockoutPicks(kp)
-    saveBracket(kp)
-    flashMsg('✓ Saved')
+    setIsDirty(true)
   }, [])
+
+  // Flush all buffered changes to the backend
+  async function handleSaveAll() {
+    setSaving(true)
+    try {
+      const knockoutScorePicks = Object.entries(scorePicks).map(([match_id, p]) => ({
+        match_id, home_goals: p.home_goals, away_goals: p.away_goals,
+      }))
+      await Promise.all([
+        knockoutScorePicks.length ? picksApi.save(knockoutScorePicks) : Promise.resolve(),
+        brackets.save({ groups: groupPicksRef.current, knockout: knockoutPicksRef.current }),
+      ])
+      setIsDirty(false)
+      flashMsg('✓ Picks saved!')
+    } catch (err) {
+      flashMsg(err.response?.data?.error || 'Save failed', true)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
   if (loading) {
@@ -454,8 +464,29 @@ export default function MyBracket() {
         <div className="flex items-center gap-3 self-center">
           {statusMsg && <span className="text-green-400 text-sm font-medium">{statusMsg}</span>}
           {errorMsg  && <span className="text-red-400 text-sm font-medium">{errorMsg}</span>}
+          {knockoutEditable && (
+            <button
+              onClick={handleSaveAll}
+              disabled={saving}
+              className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
+                isDirty
+                  ? 'bg-fifa-gold text-gray-950 hover:bg-yellow-400'
+                  : 'bg-gray-700 text-gray-400 cursor-default'
+              } ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              {saving ? 'Saving…' : 'Save Picks'}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Unsaved changes warning */}
+      {isDirty && knockoutEditable && (
+        <div className="mb-4 flex items-center gap-2 bg-amber-900/30 border border-amber-700/50 text-amber-300 rounded-lg px-4 py-2.5 text-sm">
+          <span>⚠</span>
+          <span>You have unsaved changes — click <span className="font-bold">Save Picks</span> to submit.</span>
+        </div>
+      )}
 
       {/* Status banner */}
       {knockoutLocked ? (
@@ -470,7 +501,7 @@ export default function MyBracket() {
             <li>• Enter a score for each match — the winning team <span className="text-white font-medium">automatically advances</span> to the next round.</li>
             <li>• Predict a <span className="text-white font-medium">draw</span>? An <span className="text-white font-medium">"ET/Pens:"</span> picker appears below the score — tap who goes through.</li>
             <li>• Teams cascade forward as you fill in each round.</li>
-            <li>• Scoring: <span className="text-green-400 font-medium">+10</span> for the right team advancing, plus up to <span className="text-white font-medium">+10 score bonus</span> (R16 onward, only when your matchup is correct).</li>
+            <li>• Scoring: <span className="text-green-400 font-medium">+10</span> for the right team advancing.</li>
           </ul>
         </div>
       )}
