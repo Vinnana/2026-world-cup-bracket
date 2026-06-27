@@ -34,6 +34,28 @@ const ROUND_LABELS = {
   Final: 'Final',
 }
 
+// ── Bracket layout constants ─────────────────────────────────────────────────
+const SLOT_H = 80   // vertical px per R32 slot
+const CARD_H = 72   // px height of each match card
+const COL_W  = 160  // px width of each round column
+const CONN_W = 28   // px width of connector gap between columns
+const TOTAL_H = 16 * SLOT_H  // 1280px — full bracket height
+
+// Match id order top-to-bottom for each round column
+const BRACKET_ORDER = [
+  ['m74','m77','m73','m75','m83','m84','m81','m82','m76','m78','m79','m80','m86','m88','m85','m87'],
+  ['m89','m90','m93','m94','m91','m92','m95','m96'],
+  ['m97','m98','m99','m100'],
+  ['m101','m102'],
+  ['m104'],
+]
+
+/** Absolute top offset for a card at (roundIdx, matchIdx) */
+function bCardTop(roundIdx, matchIdx) {
+  const step = SLOT_H * Math.pow(2, roundIdx)
+  return (step - SLOT_H) / 2 + matchIdx * step
+}
+
 /** Group matches by calendar day, sorted chronologically */
 function getScheduleDays(matches, dates) {
   const sorted = [...matches].sort((a, b) => {
@@ -349,6 +371,228 @@ function KnockoutRound({ label, matches, picks, results, locked, onSave, teamOve
               ? () => { rowRefs.current[i + 1]?.focus(); rowRefs.current[i + 1]?.select() }
               : undefined}
           />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── NCAA-style bracket card ──────────────────────────────────────────────────
+function BracketMatchCard({ match, pick, result, locked, onSave, override }) {
+  const awayRef = useRef(null)
+
+  const displayHome = override?.home || (typeof match.home === 'string' ? match.home : null)
+  const displayAway = override?.away || (typeof match.away === 'string' ? match.away : null)
+
+  const [homeVal, setHomeVal] = useState(pick?.home_goals ?? '')
+  const [awayVal, setAwayVal] = useState(pick?.away_goals ?? '')
+  const [dirty,   setDirty]   = useState(false)
+  const [flash,   setFlash]   = useState(false)
+
+  useEffect(() => {
+    setHomeVal(pick?.home_goals ?? '')
+    setAwayVal(pick?.away_goals ?? '')
+    setDirty(false)
+  }, [pick?.home_goals, pick?.away_goals])
+
+  const resultExists = result && result.home_goals != null && result.away_goals != null
+
+  function calcPts() {
+    if (!resultExists || homeVal === '' || awayVal === '') return null
+    const ph = parseInt(homeVal), pa = parseInt(awayVal)
+    const rh = result.home_goals, ra = result.away_goals
+    if (isNaN(ph) || isNaN(pa)) return null
+    if (ph === rh && pa === ra) return 10
+    const outcome = (h, a) => h > a ? 'home' : a > h ? 'away' : 'draw'
+    if (outcome(ph, pa) !== outcome(rh, ra)) return 0
+    return ph - pa === rh - ra ? 6 : 4
+  }
+  const pts = calcPts()
+
+  function doSave(hg, ag) {
+    onSave(match.id, hg, ag)
+    setDirty(false)
+    setFlash(true)
+    setTimeout(() => setFlash(false), 1000)
+  }
+
+  function handleChange(side, val) {
+    if (locked) return
+    const clean = val.replace(/[^0-9]/g, '').slice(0, 2)
+    if (side === 'home') {
+      setHomeVal(clean)
+      setDirty(true)
+      if (clean.length >= 1) { awayRef.current?.focus(); awayRef.current?.select() }
+    } else {
+      setAwayVal(clean)
+      if (clean.length >= 1 && homeVal !== '') {
+        const hg = parseInt(homeVal), ag = parseInt(clean)
+        if (!isNaN(hg) && !isNaN(ag)) doSave(hg, ag)
+      } else {
+        setDirty(true)
+      }
+    }
+  }
+
+  function handleBlur() {
+    if (!dirty || locked) return
+    if (homeVal === '' || awayVal === '') return
+    const hg = parseInt(homeVal), ag = parseInt(awayVal)
+    if (isNaN(hg) || isNaN(ag)) return
+    doSave(hg, ag)
+  }
+
+  const hasPick = homeVal !== '' && awayVal !== ''
+  const isUnknown = !displayHome || !displayAway
+
+  const inputCls = `w-7 h-6 text-center text-xs font-bold rounded border flex-shrink-0 transition-colors ${
+    locked
+      ? 'bg-gray-800 border-gray-700 text-gray-500 cursor-not-allowed'
+      : 'bg-gray-700 border-gray-600 text-white focus:border-fifa-gold focus:outline-none'
+  }`
+
+  return (
+    <div className={`h-full rounded-lg border overflow-hidden flex flex-col text-[10px] transition-colors ${
+      flash  ? 'border-fifa-gold/60 bg-fifa-gold/5'
+             : dirty ? 'border-fifa-gold/30 bg-gray-800/80'
+             : 'border-gray-700/60 bg-gray-800/60'
+    }`}>
+      {/* Header row: match number + pts badge */}
+      <div className="flex items-center justify-between px-1.5 bg-gray-900/70 flex-shrink-0" style={{ minHeight: 16 }}>
+        <span className="text-gray-500 font-medium" style={{ fontSize: 9 }}>M{match.no}</span>
+        {resultExists && hasPick && pts != null && (
+          <span className={`font-bold px-1 rounded leading-tight ${ptsColor(pts)}`} style={{ fontSize: 9 }}>
+            {pts > 0 ? `+${pts}` : '✗'}
+          </span>
+        )}
+      </div>
+
+      {/* Home team row */}
+      <div className="flex items-center gap-1 px-1.5 flex-1 min-h-0">
+        {isUnknown
+          ? <span className="text-gray-500 italic flex-1">TBD</span>
+          : <>
+              <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(displayHome)}</span>
+              <span className="text-gray-200 truncate flex-1 min-w-0" style={{ fontSize: 10 }}>{shortName(displayHome)}</span>
+            </>
+        }
+        <input
+          type="text" inputMode="numeric" maxLength={2}
+          value={homeVal}
+          onChange={e => handleChange('home', e.target.value)}
+          onBlur={handleBlur}
+          disabled={locked}
+          placeholder="–"
+          className={inputCls}
+        />
+      </div>
+
+      {/* Divider */}
+      <div className="bg-gray-700/60 flex-shrink-0" style={{ height: 1, marginLeft: 6, marginRight: 6 }} />
+
+      {/* Away team row */}
+      <div className="flex items-center gap-1 px-1.5 flex-1 min-h-0">
+        {isUnknown
+          ? <span className="text-gray-500 italic flex-1">TBD</span>
+          : <>
+              <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(displayAway)}</span>
+              <span className="text-gray-200 truncate flex-1 min-w-0" style={{ fontSize: 10 }}>{shortName(displayAway)}</span>
+            </>
+        }
+        <input
+          ref={awayRef}
+          type="text" inputMode="numeric" maxLength={2}
+          value={awayVal}
+          onChange={e => handleChange('away', e.target.value)}
+          onBlur={handleBlur}
+          disabled={locked}
+          placeholder="–"
+          className={inputCls}
+        />
+      </div>
+
+      {/* Result indicator */}
+      {resultExists && (
+        <div className="px-1.5 bg-gray-900/40 flex-shrink-0 text-center" style={{ minHeight: 14 }}>
+          <span className="text-gray-400 tabular-nums" style={{ fontSize: 9 }}>
+            {result.home_goals}–{result.away_goals}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** NCAA-style horizontal bracket with connectors */
+function KnockoutBracket({ knockout, picks, results, locked, onSave, knockoutOverrides }) {
+  const matchById = {}
+  for (const m of knockout) matchById[m.id] = m
+
+  const roundKeys = ['R32', 'R16', 'QF', 'SF', 'Final']
+  const totalWidth = BRACKET_ORDER.length * COL_W + (BRACKET_ORDER.length - 1) * CONN_W
+
+  return (
+    <div className="overflow-x-auto pb-2 -mx-4 px-4">
+      {/* Round label headers */}
+      <div className="flex mb-2 flex-shrink-0" style={{ width: totalWidth }}>
+        {roundKeys.map((key, i) => (
+          <div key={key} className="flex-shrink-0" style={{ width: COL_W + (i < roundKeys.length - 1 ? CONN_W : 0) }}>
+            <span className="block text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">
+              {ROUND_LABELS[key]}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Bracket grid */}
+      <div className="relative flex-shrink-0 flex" style={{ height: TOTAL_H, width: totalWidth }}>
+        {BRACKET_ORDER.map((roundIds, roundIdx) => (
+          <div key={roundIdx} className="flex flex-shrink-0">
+            {/* Match cards column */}
+            <div className="relative flex-shrink-0" style={{ width: COL_W, height: TOTAL_H }}>
+              {roundIds.map((id, matchIdx) => {
+                const m = matchById[id]
+                if (!m) return null
+                const top = bCardTop(roundIdx, matchIdx)
+                return (
+                  <div key={id} className="absolute" style={{ top, left: 0, width: COL_W, height: CARD_H }}>
+                    <BracketMatchCard
+                      match={m}
+                      pick={picks[id]}
+                      result={results[id]}
+                      locked={locked}
+                      onSave={onSave}
+                      override={knockoutOverrides[id]}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Connector column (skip after last round) */}
+            {roundIdx < BRACKET_ORDER.length - 1 && (
+              <div className="relative flex-shrink-0" style={{ width: CONN_W, height: TOTAL_H }}>
+                {BRACKET_ORDER[roundIdx + 1].map((_, i) => {
+                  const f0  = bCardTop(roundIdx, 2 * i)     + CARD_H / 2
+                  const f1  = bCardTop(roundIdx, 2 * i + 1) + CARD_H / 2
+                  const mid = (f0 + f1) / 2
+                  const half = CONN_W / 2
+                  return (
+                    <div key={i}>
+                      {/* Stub right from feeder 0 */}
+                      <div className="absolute bg-gray-600" style={{ top: f0 - 1, left: 0,        width: half, height: 2 }} />
+                      {/* Stub right from feeder 1 */}
+                      <div className="absolute bg-gray-600" style={{ top: f1 - 1, left: 0,        width: half, height: 2 }} />
+                      {/* Vertical line connecting stubs */}
+                      <div className="absolute bg-gray-600" style={{ top: f0,     left: half - 1, width: 2, height: f1 - f0 }} />
+                      {/* Horizontal line from midpoint to next column */}
+                      <div className="absolute bg-gray-600" style={{ top: mid - 1, left: half,    width: half, height: 2 }} />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -945,23 +1189,14 @@ export default function ScorePicks() {
                 ? '🔒 Knockout picks are locked.'
                 : '⚡ Knockout is open — predict a scoreline for each matchup. R32 shows the real teams; later rounds show your predicted matchup (the scoreline scores only if your matchup is right). Pick who advances over in 🏆 My Bracket — that’s where the +10-per-round points come from.'}
             </div>
-            {koRounds.map(round => {
-              const rMatches = knockoutMatches.filter(m => m.round === round)
-              if (!rMatches.length) return null
-              return (
-                <KnockoutRound
-                  key={round}
-                  label={round === 'R32' ? 'Round of 32' : round === 'R16' ? 'Round of 16' :
-                         round === 'QF' ? 'Quarter-finals' : round === 'SF' ? 'Semi-finals' : 'Final 🏆'}
-                  matches={rMatches}
-                  picks={myPicks}
-                  results={results}
-                  locked={!knockoutEditable}
-                  onSave={handleSave}
-                  teamOverrides={knockoutOverrides}
-                />
-              )
-            })}
+            <KnockoutBracket
+              knockout={knockoutMatches}
+              picks={myPicks}
+              results={results}
+              locked={!knockoutEditable}
+              onSave={handleSave}
+              knockoutOverrides={knockoutOverrides}
+            />
           </div>
         )
       )}
