@@ -36,6 +36,7 @@ export default function Navbar() {
         {user && (
           <div className="flex items-center gap-1 flex-wrap justify-end">
             {link('/picks', '⚽ My Picks')}
+            {link('/bracket', '🏆 My Bracket')}
             {link('/all', 'All Picks')}
             {link('/leaderboard', 'Leaderboard')}
             {link('/faq', 'Rules')}

@@ -7,6 +7,7 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import Account from './pages/Account'
 import ScorePicks from './pages/ScorePicks'
+import MyBracket from './pages/MyBracket'
 import AllPicks from './pages/AllPicks'
 import Leaderboard from './pages/Leaderboard'
 import FAQ from './pages/FAQ'
@@ -33,12 +34,11 @@ function AppRoutes() {
         <Route path="/forgot-password" element={user ? <Navigate to="/picks" /> : <ForgotPassword />} />
         <Route path="/account"        element={<ProtectedRoute><Account /></ProtectedRoute>} />
         <Route path="/picks"          element={<ProtectedRoute><ScorePicks /></ProtectedRoute>} />
+        <Route path="/bracket"        element={<ProtectedRoute><MyBracket /></ProtectedRoute>} />
         <Route path="/all"            element={<ProtectedRoute><AllPicks /></ProtectedRoute>} />
         <Route path="/leaderboard"    element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
         <Route path="/faq"            element={<ProtectedRoute><FAQ /></ProtectedRoute>} />
         <Route path="/admin"          element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
-        {/* Legacy bracket routes still work */}
-        <Route path="/bracket"        element={<Navigate to="/picks" replace />} />
         <Route path="*"               element={<Navigate to={user ? '/picks' : '/login'} replace />} />
       </Routes>
     </>
