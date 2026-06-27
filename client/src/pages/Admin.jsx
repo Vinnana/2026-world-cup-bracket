@@ -532,23 +532,25 @@ export default function Admin() {
 
   function flashEdit(text, err = false) {
     setEditMsg({ text, err })
-    setTimeout(() => setEditMsg(''), 3000)
+    if (!err) setTimeout(() => setEditMsg(''), 3000)
   }
 
   async function handleSelectEditUser(user) {
     setEditUser(user)
     setEditPicksData(null)
     setEditScoreForm({})
+    setEditMsg('')
     setEditPicksLoading(true)
     try {
       const res = await admin.getUserPicks(user.id)
       const d = res.data
       const scoreMap = {}
-      for (const p of d.scorePicks) scoreMap[p.match_id] = p
+      for (const p of (d.scorePicks || [])) scoreMap[p.match_id] = p
       setEditPicksData({ scoreMap, bracket: d.bracket || { groups: {}, knockout: {} } })
       setEditBracketForm(d.bracket || { groups: {}, knockout: {} })
-    } catch {
-      flashEdit('Failed to load picks', true)
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || 'Failed to load picks'
+      flashEdit(`Error: ${msg}`, true)
     } finally {
       setEditPicksLoading(false)
     }

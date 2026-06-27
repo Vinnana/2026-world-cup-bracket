@@ -274,14 +274,22 @@ router.get('/report', requireAdmin, (req, res) => {
 
 // Get a user's score picks + bracket picks (admin view, bypasses lock)
 router.get('/user-picks/:user_id', requireAdmin, (req, res) => {
-  const user_id = Number(req.params.user_id)
-  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
-  const user = db.getUserById(user_id)
-  if (!user) return res.status(404).json({ error: 'User not found' })
-  const scorePicks = db.getScorePicksByUser(user_id)
-  const bracketRow = db.getBracketByUserId(user_id)
-  const bracket = bracketRow ? JSON.parse(bracketRow.picks) : { groups: {}, knockout: {} }
-  res.json({ username: user.username, scorePicks, bracket })
+  try {
+    const user_id = Number(req.params.user_id)
+    if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+    const user = db.getUserById(user_id)
+    if (!user) return res.status(404).json({ error: 'User not found' })
+    const scorePicks = db.getScorePicksByUser(user_id) || []
+    const bracketRow = db.getBracketByUserId(user_id)
+    let bracket = { groups: {}, knockout: {} }
+    if (bracketRow?.picks) {
+      try { bracket = JSON.parse(bracketRow.picks) } catch {}
+    }
+    res.json({ username: user.username, scorePicks, bracket })
+  } catch (err) {
+    console.error('[admin] user-picks GET error:', err.message)
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // Upsert one score pick for a user (admin, bypasses lock)
