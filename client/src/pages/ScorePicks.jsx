@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, forwardRef } from 'react'
+import { useState, useEffect, useCallback, useRef, forwardRef } from 'react'
 import { picks as picksApi, liveScores as liveApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
