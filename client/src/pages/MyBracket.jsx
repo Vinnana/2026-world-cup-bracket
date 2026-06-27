@@ -227,17 +227,30 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
   const roundKeys = ['R32', 'R16', 'QF', 'SF', 'Final']
   const totalWidth = BRACKET_ORDER.length * COL_W + (BRACKET_ORDER.length - 1) * CONN_W
 
+  const finalCardTop = bCardTop(4, 0)
+
   return (
     <div className="overflow-x-auto pb-2 -mx-4 px-4">
-      <div className="flex mb-2 flex-shrink-0" style={{ width: totalWidth }}>
-        {roundKeys.map((key, i) => (
-          <div key={key} className="flex-shrink-0"
-            style={{ width: COL_W + (i < roundKeys.length - 1 ? CONN_W : 0) }}>
-            <span className="block text-center text-[10px] font-bold text-gray-400 uppercase tracking-wider truncate">
-              {ROUND_LABELS[key]}
-            </span>
-          </div>
-        ))}
+      {/* Round label headers */}
+      <div className="flex mb-3 flex-shrink-0" style={{ width: totalWidth }}>
+        {roundKeys.map((key, i) => {
+          const isFinal = key === 'Final'
+          const isSF    = key === 'SF'
+          return (
+            <div key={key} className="flex-shrink-0 flex justify-center"
+              style={{ width: COL_W + (i < roundKeys.length - 1 ? CONN_W : 0) }}>
+              <span className={`inline-block text-center font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border truncate ${
+                isFinal
+                  ? 'text-[11px] text-gray-950 bg-fifa-gold border-yellow-400 shadow-[0_0_8px_rgba(201,162,39,0.5)]'
+                  : isSF
+                  ? 'text-[10px] text-white border-gray-500 bg-gray-700'
+                  : 'text-[10px] text-gray-300 border-gray-700 bg-gray-800/70'
+              }`}>
+                {isFinal ? '🏆 ' : ''}{ROUND_LABELS[key]}
+              </span>
+            </div>
+          )
+        })}
       </div>
 
       <div className="relative flex-shrink-0 flex" style={{ height: TOTAL_H, width: totalWidth }}>
@@ -247,25 +260,38 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
               {roundIds.map((id, matchIdx) => {
                 const m = matchById[id]
                 if (!m) return null
-                const top   = bCardTop(roundIdx, matchIdx)
-                const teams = resolvedTeams[id] || {}
+                const top     = bCardTop(roundIdx, matchIdx)
+                const teams   = resolvedTeams[id] || {}
+                const isFinal = roundIdx === BRACKET_ORDER.length - 1
                 return (
                   <div key={id} className="absolute" style={{ top, left: 0, width: COL_W, height: CARD_H }}>
-                    <KoCard
-                      match={m}
-                      scorePick={scorePicks[id]}
-                      result={matchResults[id]}
-                      locked={locked}
-                      onSaveScore={onSaveScore}
-                      onClearScore={onClearScore}
-                      homeTeam={teams.home || null}
-                      awayTeam={teams.away || null}
-                      advancePick={knockoutPicks[id]}
-                      onPickAdvancement={onPickAdvancement}
-                    />
+                    {/* Gold ring around the Final card */}
+                    <div className={isFinal ? 'rounded-lg p-[2px] bg-gradient-to-b from-yellow-400 to-yellow-600 shadow-[0_0_12px_rgba(201,162,39,0.6)]' : 'h-full'}>
+                      <KoCard
+                        match={m}
+                        scorePick={scorePicks[id]}
+                        result={matchResults[id]}
+                        locked={locked}
+                        onSaveScore={onSaveScore}
+                        onClearScore={onClearScore}
+                        homeTeam={teams.home || null}
+                        awayTeam={teams.away || null}
+                        advancePick={knockoutPicks[id]}
+                        onPickAdvancement={onPickAdvancement}
+                      />
+                    </div>
                   </div>
                 )
               })}
+
+              {/* Trophy below the Final card */}
+              {roundIdx === BRACKET_ORDER.length - 1 && (
+                <div className="absolute flex flex-col items-center gap-0.5"
+                  style={{ top: finalCardTop + CARD_H + 10, left: 0, width: COL_W }}>
+                  <span style={{ fontSize: 28 }}>🏆</span>
+                  <span className="text-[9px] font-black text-fifa-gold uppercase tracking-widest">World Cup Champion</span>
+                </div>
+              )}
             </div>
 
             {roundIdx < BRACKET_ORDER.length - 1 && (
