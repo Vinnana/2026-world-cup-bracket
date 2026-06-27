@@ -620,6 +620,10 @@ export default function ScorePicks() {
   const [confirmClear,  setConfirmClear]  = useState(false)
   const [clearing,      setClearing]      = useState(false)
 
+  // Refs so handleSave (useCallback) can read current render values without stale closures
+  const bracketPicksRef     = useRef({ groups: {}, knockout: {} })
+  const knockoutOverridesRef = useRef({})
+
   // Load matches + my picks
   async function load() {
     try {
@@ -696,6 +700,20 @@ export default function ScorePicks() {
     try {
       await picksApi.save([{ match_id, home_goals, away_goals }])
       setMyPicks(prev => ({ ...prev, [match_id]: { home_goals, away_goals } }))
+
+      // Auto-advance: if score has a clear winner, update bracket pick for this match
+      if (home_goals !== away_goals) {
+        const ov = knockoutOverridesRef.current[match_id]
+        const winner = home_goals > away_goals ? ov?.home : ov?.away
+        if (winner) {
+          const current = bracketPicksRef.current
+          const updated = { ...current, knockout: { ...current.knockout, [match_id]: winner } }
+          bracketPicksRef.current = updated
+          setBracketPicks(updated)
+          bracketsApi.save(updated).catch(() => {})
+        }
+      }
+
       setStatusMsg('✓ Saved')
       setTimeout(() => setStatusMsg(''), 1500)
     } catch {
@@ -732,6 +750,10 @@ export default function ScorePicks() {
     const away = resolvePredicted(m.away)
     if (home || away) knockoutOverrides[m.id] = { home, away }
   }
+  // Keep refs in sync so handleSave can read current values without stale closures
+  knockoutOverridesRef.current = knockoutOverrides
+  bracketPicksRef.current = bracketPicks
+
   const upcomingGroupMatches  = groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null)
   const completedGroupMatches = groupMatches.filter(m => results[m.id]?.home_goals != null)
   const groups = [...new Set(groupMatches.map(m => m.group))].sort()
@@ -1187,7 +1209,7 @@ export default function ScorePicks() {
             }`}>
               {knockoutLocked
                 ? '🔒 Knockout picks are locked.'
-                : '⚡ Knockout is open — predict a scoreline for each matchup. R32 shows the real teams; later rounds show your predicted matchup (the scoreline scores only if your matchup is right). Pick who advances over in 🏆 My Bracket — that’s where the +10-per-round points come from.'}
+                : '⚡ Knockout is open. Enter a score for each match — the winning team automatically advances in your bracket. If you predict a draw (extra time / penalties), visit 🏆 My Bracket to pick who goes through. From R16 onward, your score bonus only counts if your predicted matchup is correct. Advancing the right team earns +10 per round.'}
             </div>
             <KnockoutBracket
               knockout={knockoutMatches}
