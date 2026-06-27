@@ -270,6 +270,57 @@ router.get('/report', requireAdmin, (req, res) => {
   res.json({ users: sortedUsers, matches, totals, generated_at: new Date().toISOString() })
 })
 
+// ── Admin participant pick editing ────────────────────────────────────────────
+
+// Get a user's score picks + bracket picks (admin view, bypasses lock)
+router.get('/user-picks/:user_id', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const scorePicks = db.getScorePicksByUser(user_id)
+  const bracketRow = db.getBracketByUserId(user_id)
+  const bracket = bracketRow ? JSON.parse(bracketRow.picks) : { groups: {}, knockout: {} }
+  res.json({ username: user.username, scorePicks, bracket })
+})
+
+// Upsert one score pick for a user (admin, bypasses lock)
+router.post('/user-picks/:user_id/score', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const { match_id, home_goals, away_goals } = req.body
+  if (!match_id) return res.status(400).json({ error: 'match_id required' })
+  const hg = parseInt(home_goals)
+  const ag = parseInt(away_goals)
+  if (isNaN(hg) || hg < 0 || isNaN(ag) || ag < 0) return res.status(400).json({ error: 'Invalid goals' })
+  db.upsertScorePick(user_id, match_id, hg, ag)
+  res.json({ success: true })
+})
+
+// Delete one score pick for a user (admin, bypasses lock)
+router.delete('/user-picks/:user_id/score/:match_id', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  db.deleteScorePick(user_id, req.params.match_id)
+  res.json({ success: true })
+})
+
+// Save a user's full bracket (admin, bypasses lock — merges group + knockout independently)
+router.post('/user-bracket/:user_id', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const { picks } = req.body
+  if (!picks) return res.status(400).json({ error: 'picks required' })
+  db.upsertBracket(user_id, JSON.stringify(picks))
+  res.json({ success: true })
+})
+
 // Create a user account on behalf of a participant
 router.post('/create-user', requireAdmin, async (req, res) => {
   const { username, password } = req.body

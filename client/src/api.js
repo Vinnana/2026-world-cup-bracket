@@ -161,6 +161,22 @@ export const admin = {
   clearUserPicks: (user_id) =>
     api.delete(`/admin/user-picks/${user_id}`),
 
+  /** Get a user's score picks + bracket picks */
+  getUserPicks: (user_id) =>
+    api.get(`/admin/user-picks/${user_id}`),
+
+  /** Upsert one score pick for a user */
+  setUserScorePick: (user_id, match_id, home_goals, away_goals) =>
+    api.post(`/admin/user-picks/${user_id}/score`, { match_id, home_goals, away_goals }),
+
+  /** Delete one score pick for a user */
+  deleteUserScorePick: (user_id, match_id) =>
+    api.delete(`/admin/user-picks/${user_id}/score/${match_id}`),
+
+  /** Save a user's full bracket (bypasses lock) */
+  setUserBracket: (user_id, picks) =>
+    api.post(`/admin/user-bracket/${user_id}`, { picks }),
+
   deleteUser: (user_id) =>
     api.delete(`/admin/users/${user_id}`),
 
