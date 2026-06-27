@@ -19,7 +19,7 @@ const BRACKET_ORDER = [
 
 const ROUND_LABELS = {
   R32: 'Round of 32', R16: 'Round of 16',
-  QF: 'Quarter-finals', SF: 'Semi-finals', Final: 'Final',
+  QF: 'Quarter-finals', SF: 'Semi-finals', Third: '3rd Place', Final: 'Final',
 }
 
 function bCardTop(roundIdx, matchIdx) {
@@ -224,6 +224,7 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
   const matchById = {}
   for (const m of knockout) matchById[m.id] = m
 
+  const thirdPlaceMatch = matchById['m103']
   const roundKeys = ['R32', 'R16', 'QF', 'SF', 'Final']
   const totalWidth = BRACKET_ORDER.length * COL_W + (BRACKET_ORDER.length - 1) * CONN_W
 
@@ -283,6 +284,45 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                   </div>
                 )
               })}
+
+              {/* 3rd Place match + Final label — Final column only */}
+              {roundIdx === BRACKET_ORDER.length - 1 && thirdPlaceMatch && (() => {
+                const thirdTop  = finalCardTop - CARD_H - 56
+                const thirdTeams = resolvedTeams['m103'] || {}
+                return (
+                  <>
+                    {/* 3rd Place label */}
+                    <div className="absolute flex items-center gap-1 justify-center"
+                      style={{ top: thirdTop - 18, left: 0, width: COL_W }}>
+                      <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">🥉 3rd Place</span>
+                    </div>
+                    {/* 3rd Place card */}
+                    <div className="absolute" style={{ top: thirdTop, left: 0, width: COL_W, height: CARD_H }}>
+                      <div className="rounded-lg p-[2px] bg-gradient-to-b from-amber-600 to-amber-800 h-full" style={{ boxShadow: '0 0 8px rgba(180,120,0,0.4)' }}>
+                        <KoCard
+                          match={thirdPlaceMatch}
+                          scorePick={scorePicks['m103']}
+                          result={matchResults['m103']}
+                          locked={locked}
+                          onSaveScore={onSaveScore}
+                          onClearScore={onClearScore}
+                          homeTeam={thirdTeams.home || null}
+                          awayTeam={thirdTeams.away || null}
+                          advancePick={knockoutPicks['m103']}
+                          onPickAdvancement={onPickAdvancement}
+                        />
+                      </div>
+                    </div>
+                    {/* Divider between 3rd place and Final */}
+                    <div className="absolute flex items-center gap-2 justify-center"
+                      style={{ top: thirdTop + CARD_H + 8, left: 0, width: COL_W }}>
+                      <div className="h-px bg-gray-700/60 flex-1" />
+                      <span className="text-[9px] font-black text-fifa-gold uppercase tracking-widest flex-shrink-0">Final</span>
+                      <div className="h-px bg-gray-700/60 flex-1" />
+                    </div>
+                  </>
+                )
+              })()}
 
               {/* Trophy below the Final card */}
               {roundIdx === BRACKET_ORDER.length - 1 && (
@@ -387,26 +427,30 @@ export default function MyBracket() {
 
   // Resolve the displayed team for each knockout slot.
   // Actual ESPN data takes priority; falls back to bracket picks cascade.
-  function resolvePredicted(side, gp, kp) {
+  // resolvedTeams is built up iteratively; pass it in so {lose:mX} can look back
+  const resolvedTeams = {}
+  function resolveSide(side) {
     if (typeof side === 'string') {
       if (side.startsWith('3RD:')) return null
-      const gpg = gp?.[side[1]]
+      const gpg = groupPicks?.[side[1]]
       return gpg ? (side[0] === '1' ? gpg.first : gpg.second) : null
     }
-    if (side?.win) return kp?.[side.win] || null
+    if (side?.win)  return knockoutPicks?.[side.win] || null
+    if (side?.lose) {
+      const teams  = resolvedTeams[side.lose]
+      const winner = knockoutPicks?.[side.lose]
+      if (!teams || !winner) return null
+      return teams.home === winner ? teams.away : teams.away === winner ? teams.home : null
+    }
     return null
   }
 
-  const resolvedTeams = {}
   for (const m of knockout) {
     const actual = teamOverrides[m.id]
     if (actual?.home && actual?.away) {
       resolvedTeams[m.id] = { home: actual.home, away: actual.away }
     } else {
-      resolvedTeams[m.id] = {
-        home: resolvePredicted(m.home, groupPicks, knockoutPicks),
-        away: resolvePredicted(m.away, groupPicks, knockoutPicks),
-      }
+      resolvedTeams[m.id] = { home: resolveSide(m.home), away: resolveSide(m.away) }
     }
   }
   resolvedTeamsRef.current = resolvedTeams

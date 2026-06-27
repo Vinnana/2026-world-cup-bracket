@@ -22,6 +22,7 @@ export const ROUNDS = [
   { key: 'R16', label: 'Round of 16' },
   { key: 'QF', label: 'Quarter-finals' },
   { key: 'SF', label: 'Semi-finals' },
+  { key: 'Third', label: '3rd Place' },
   { key: 'Final', label: 'Final' },
 ]
 
@@ -73,6 +74,9 @@ export const KNOCKOUT = [
   // ---- Semi-finals (matches 101–102) ----
   { id: 'm101', no: 101, round: 'SF', home: { win: 'm97' }, away: { win: 'm98' },  next: 'm104', slot: 'home' },
   { id: 'm102', no: 102, round: 'SF', home: { win: 'm99' }, away: { win: 'm100' }, next: 'm104', slot: 'away' },
+
+  // ---- 3rd Place Playoff (match 103) ----
+  { id: 'm103', no: 103, round: 'Third', home: { lose: 'm101' }, away: { lose: 'm102' }, next: null, slot: null },
 
   // ---- Final (match 104) ----
   { id: 'm104', no: 104, round: 'Final', home: { win: 'm101' }, away: { win: 'm102' }, next: null, slot: null },

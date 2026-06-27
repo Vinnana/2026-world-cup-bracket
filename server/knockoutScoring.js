@@ -26,9 +26,17 @@ import { scoreMatch } from './scoring.js'
  * Group-position slot strings ('1A', '2B', '3RD:ABCDF') only appear in R32,
  * where the matchup isn't gated, so they aren't resolved here.
  */
-function resolvePredictedSide(side, knockoutPicks) {
+function resolvePredictedSide(side, knockoutPicks, resolvedTeams) {
   if (!side || typeof side === 'string') return null
   if (side.win) return knockoutPicks[side.win] || null
+  if (side.lose) {
+    const teams  = resolvedTeams?.[side.lose]
+    const winner = knockoutPicks[side.lose]
+    if (!teams || !winner) return null
+    if (teams.home === winner) return teams.away
+    if (teams.away === winner) return teams.home
+    return null
+  }
   return null
 }
 
@@ -58,8 +66,8 @@ export function scoreKnockoutForUser(bracket, scorePicksByMatch, actuals) {
     const pick = scorePicksByMatch[m.id]
     const resultKnown = act.home_goals != null && act.away_goals != null
     if (pick && pick.home_goals != null && pick.away_goals != null && resultKnown) {
-      if (m.round === 'R32') {
-        // Teams known up front → matchup always correct, pick already in actual orientation.
+      if (m.round === 'R32' || m.round === 'Third') {
+        // Teams determined externally → matchup always correct, pick in actual orientation.
         scorePts = scoreMatch(pick, act) || 0
       } else {
         const predHome = resolvePredictedSide(m.home, knockoutPicks)
