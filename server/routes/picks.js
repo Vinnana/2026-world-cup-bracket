@@ -193,6 +193,22 @@ router.delete('/my', requireAuth, (req, res) => {
   res.json({ success: true, cleared: before })
 })
 
+// ── DELETE /api/picks/my/:match_id ───────────────────────────────────────────
+// Delete a single score pick (group lock or knockout lock gates it)
+router.delete('/my/:match_id', requireAuth, (req, res) => {
+  const match_id = req.params.match_id
+  const matchNo = parseInt(match_id.replace('m', ''))
+  const isKnockout = matchNo >= 73
+  if (isKnockout) {
+    if (!isKnockoutOpen())   return res.status(403).json({ error: 'Knockout picks are not open' })
+    if (isKnockoutLocked())  return res.status(403).json({ error: 'Knockout picks are locked' })
+  } else {
+    if (isPicksLocked()) return res.status(403).json({ error: 'Picks are locked' })
+  }
+  db.deleteScorePick(req.user.id, match_id)
+  res.json({ success: true })
+})
+
 // ── POST /api/picks ──────────────────────────────────────────────────────────
 // Batch upsert score picks. Body: { picks: [{ match_id, home_goals, away_goals }] }
 // Group and knockout picks are gated independently: group picks follow the group

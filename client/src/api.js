@@ -79,6 +79,8 @@ export const picks = {
   all: () => api.get('/picks/all'),
   /** Clear the current user's own picks (only while picks are open) */
   clearMine: () => api.delete('/picks/my'),
+  /** Delete a single score pick by match_id */
+  deletePick: (match_id) => api.delete(`/picks/my/${match_id}`),
 };
 
 /* ---------------- LIVE SCORES ---------------- */

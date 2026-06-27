@@ -43,7 +43,7 @@ function ptsLabel(pts) {
 }
 
 // ── Single knockout match card ────────────────────────────────────────────────
-function KoCard({ match, scorePick, result, locked, onSaveScore, homeTeam, awayTeam, advancePick, onPickAdvancement }) {
+function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement }) {
   const awayRef = useRef(null)
 
   const [homeVal, setHomeVal] = useState(scorePick?.home_goals ?? '')
@@ -97,8 +97,13 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, homeTeam, awayT
   }
 
   function handleBlur() {
-    if (!dirty || locked) return
-    if (homeVal === '' || awayVal === '') return
+    if (locked) return
+    // Both inputs cleared while a pick existed → signal deletion
+    if (homeVal === '' && awayVal === '' && scorePick?.home_goals != null) {
+      onClearScore(match.id)
+      return
+    }
+    if (!dirty || homeVal === '' || awayVal === '') return
     const hg = parseInt(homeVal), ag = parseInt(awayVal)
     if (isNaN(hg) || isNaN(ag)) return
     doSave(hg, ag)
@@ -215,7 +220,7 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, homeTeam, awayT
 }
 
 // ── NCAA-style bracket ────────────────────────────────────────────────────────
-function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchResults, locked, onSaveScore, onPickAdvancement, resolvedTeams }) {
+function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchResults, locked, onSaveScore, onClearScore, onPickAdvancement, resolvedTeams }) {
   const matchById = {}
   for (const m of knockout) matchById[m.id] = m
 
@@ -252,6 +257,7 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                       result={matchResults[id]}
                       locked={locked}
                       onSaveScore={onSaveScore}
+                      onClearScore={onClearScore}
                       homeTeam={teams.home || null}
                       awayTeam={teams.away || null}
                       advancePick={knockoutPicks[id]}
@@ -302,6 +308,7 @@ export default function MyBracket() {
   const [errorMsg,      setErrorMsg]      = useState('')
   const [isDirty,       setIsDirty]       = useState(false)
   const [saving,        setSaving]        = useState(false)
+  const [pendingDeletes,setPendingDeletes]= useState(new Set()) // match_ids cleared by user
 
   const groupPicksRef    = useRef({})
   const knockoutPicksRef = useRef({})
@@ -393,6 +400,8 @@ export default function MyBracket() {
   // Buffer score change locally — no API call until Save
   const handleSaveScore = useCallback((match_id, home_goals, away_goals) => {
     setScorePicks(prev => ({ ...prev, [match_id]: { home_goals, away_goals } }))
+    // If this match was previously queued for deletion, un-queue it
+    setPendingDeletes(prev => { const s = new Set(prev); s.delete(match_id); return s })
     setIsDirty(true)
 
     // Auto-advance bracket winner locally when score is clear
@@ -405,6 +414,18 @@ export default function MyBracket() {
         setKnockoutPicks(kp)
       }
     }
+  }, [])
+
+  // User cleared both inputs — remove pick from local state and queue deletion
+  const handleClearScore = useCallback((match_id) => {
+    setScorePicks(prev => { const s = { ...prev }; delete s[match_id]; return s })
+    setPendingDeletes(prev => new Set([...prev, match_id]))
+    // Also clear any auto-advanced bracket pick for this match
+    const kp = { ...knockoutPicksRef.current }
+    delete kp[match_id]
+    knockoutPicksRef.current = kp
+    setKnockoutPicks(kp)
+    setIsDirty(true)
   }, [])
 
   // Buffer ET/Pens pick locally — no API call until Save
@@ -422,10 +443,13 @@ export default function MyBracket() {
       const knockoutScorePicks = Object.entries(scorePicks).map(([match_id, p]) => ({
         match_id, home_goals: p.home_goals, away_goals: p.away_goals,
       }))
+      // Fire upserts + deletes + bracket save in parallel
       await Promise.all([
         knockoutScorePicks.length ? picksApi.save(knockoutScorePicks) : Promise.resolve(),
+        ...[...pendingDeletes].map(mid => picksApi.deletePick(mid)),
         brackets.save({ groups: groupPicksRef.current, knockout: knockoutPicksRef.current }),
       ])
+      setPendingDeletes(new Set())
       setIsDirty(false)
       flashMsg('✓ Picks saved!')
     } catch (err) {
@@ -513,6 +537,7 @@ export default function MyBracket() {
         matchResults={matchResults}
         locked={!knockoutEditable}
         onSaveScore={handleSaveScore}
+        onClearScore={handleClearScore}
         onPickAdvancement={handlePickAdvancement}
         resolvedTeams={resolvedTeams}
       />
