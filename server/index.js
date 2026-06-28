@@ -7,6 +7,7 @@ import picksRoutes from './routes/picks.js'
 import liveRoutes from './routes/liveScores.js'
 import db, { initDB } from './database.js'
 import { seedPdaiPicks } from './seeds/pdai-picks.js'
+import { seedAdyaPicks } from './seeds/adya-picks.js'
 import { runResultsSync, addSyncHistory, isConfigured, activeProvider } from './resultsFetcher.js'
 import { GROUPS, KNOCKOUT, ROUNDS } from './teams.js'
 import { MATCH_DATES } from './schedule.js'
@@ -83,6 +84,7 @@ async function main() {
   try {
     await initDB()
     await seedPdaiPicks(db)
+    await seedAdyaPicks(db)
     // Baseline for the admin display; the scheduler updates this each tick to the
     // live (1 min) or idle (15 min) cadence as games come and go.
     db.setSetting('fetch_interval_min', String(IDLE_FETCH_INTERVAL_MIN))

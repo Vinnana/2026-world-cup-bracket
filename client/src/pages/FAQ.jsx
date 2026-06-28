@@ -5,6 +5,14 @@ const SCORING = [
   { pts: '0',   label: 'Wrong outcome',                      color: 'bg-gray-700 text-gray-400' },
 ]
 
+const KO_SCORING = [
+  { pts: '+10', label: 'Picked the team that advances',              color: 'bg-purple-700 text-purple-100' },
+  { pts: '+10', label: 'Exact scoreline bonus (90 min / ET goals)',  color: 'bg-green-700 text-green-100' },
+  { pts: '+6',  label: 'Right winner + correct goal margin (bonus)', color: 'bg-yellow-700 text-yellow-100' },
+  { pts: '+4',  label: 'Right winner only (bonus)',                  color: 'bg-orange-700 text-orange-100' },
+  { pts: '0',   label: 'Picked the losing team',                     color: 'bg-gray-700 text-gray-400' },
+]
+
 const RULES = [
   {
     q: 'How do I submit my picks?',
@@ -75,6 +83,43 @@ export default function FAQ() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Knockout Scoring */}
+      <div className="card mb-6">
+        <h2 className="font-bold text-purple-400 mb-1">Knockout Round Scoring</h2>
+        <p className="text-xs text-gray-500 mb-4">Each knockout match is worth up to <span className="text-white font-bold">20 points</span>.</p>
+        <div className="space-y-2">
+          {KO_SCORING.map(({ pts, label, color }) => (
+            <div key={label} className="flex items-center gap-3">
+              <span className={`${color} font-black px-2.5 py-1 rounded text-sm w-12 text-center flex-shrink-0`}>
+                {pts}
+              </span>
+              <span className="text-sm text-gray-300">{label}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 pt-4 border-t border-gray-800 space-y-2 text-xs text-gray-400">
+          <p>
+            <span className="text-white font-semibold">Advancement pick</span> (+10 pts): for every knockout match,
+            pick which team advances. This scores independently of the scoreline — even if your scoreline is wrong,
+            you get +10 if the right team wins.
+          </p>
+          <p>
+            <span className="text-white font-semibold">Scoreline bonus</span> (up to +10 pts): predict the exact
+            score of the match (regular time / extra time goals). Same tier system as the group stage — exact score,
+            right goal margin, or just the right winner.
+          </p>
+          <p>
+            <span className="text-white font-semibold">Round of 16 onwards</span>: the scoreline bonus only counts
+            when your predicted matchup matches the actual matchup. If you predicted Germany vs Brazil in the
+            quarter-finals but a different pair plays, your scoreline pick for that match earns 0 bonus
+            (the +10 advancement still counts normally).
+          </p>
+          <p>
+            <span className="text-white font-semibold">Maximum per match</span>: 20 pts (10 advance + 10 exact score).
+          </p>
         </div>
       </div>
 

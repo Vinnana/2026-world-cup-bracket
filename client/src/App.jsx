@@ -13,6 +13,7 @@ import Leaderboard from './pages/Leaderboard'
 import OverallLeaderboard from './pages/OverallLeaderboard'
 import FAQ from './pages/FAQ'
 import Admin from './pages/Admin'
+import AllBrackets from './pages/AllBrackets'
 
 function ProtectedRoute({ children, adminOnly }) {
   const { user, loading } = useAuth()
@@ -40,8 +41,9 @@ function AppRoutes() {
         <Route path="/leaderboard"    element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
         <Route path="/overall"        element={<ProtectedRoute><OverallLeaderboard /></ProtectedRoute>} />
         <Route path="/faq"            element={<ProtectedRoute><FAQ /></ProtectedRoute>} />
+        <Route path="/brackets"        element={<ProtectedRoute><AllBrackets /></ProtectedRoute>} />
         <Route path="/admin"          element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
-        <Route path="*"               element={<Navigate to={user ? '/picks' : '/login'} replace />} />
+        <Route path="*"               element={<Navigate to={user ? '/all' : '/login'} replace />} />
       </Routes>
     </>
   )

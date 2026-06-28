@@ -577,6 +577,18 @@ export default function AllPicks() {
                                 ) : (
                                   <span className="text-gray-600 text-[9px]">–</span>
                                 )}
+                                {isKo && u.bracket_picks?.[m.id] && (() => {
+                                  const picked = u.bracket_picks[m.id]
+                                  const actual = result?.winner
+                                  const cls = actual == null ? 'text-gray-500'
+                                    : actual === picked ? 'text-green-400'
+                                    : 'text-red-400'
+                                  return (
+                                    <span className={`text-[8px] truncate max-w-[4.5rem] ${cls}`}>
+                                      →{getFlag(picked)} {picked}
+                                    </span>
+                                  )
+                                })()}
                               </div>
                             )
                           })}
@@ -682,6 +694,18 @@ export default function AllPicks() {
                                 ) : (
                                   <span className="text-gray-600 text-[9px]">–</span>
                                 )}
+                                {isKo && u.bracket_picks?.[m.id] && (() => {
+                                  const picked = u.bracket_picks[m.id]
+                                  const actual = result?.winner
+                                  const cls = actual == null ? 'text-gray-500'
+                                    : actual === picked ? 'text-green-400'
+                                    : 'text-red-400'
+                                  return (
+                                    <span className={`text-[8px] truncate max-w-[4.5rem] ${cls}`}>
+                                      →{getFlag(picked)} {picked}
+                                    </span>
+                                  )
+                                })()}
                               </div>
                             )
                           })}

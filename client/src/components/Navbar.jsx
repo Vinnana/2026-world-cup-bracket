@@ -38,6 +38,7 @@ export default function Navbar() {
             {link('/picks', '⚽ My Picks')}
             {link('/bracket', '🏆 My Bracket')}
             {link('/all', 'All Picks')}
+            {link('/brackets', 'All Brackets')}
             {link('/overall', '🏆 Overall')}
             {link('/leaderboard', 'Group Stage')}
             {link('/faq', 'Rules')}
