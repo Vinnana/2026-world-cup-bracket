@@ -39,25 +39,6 @@ export default function AllBrackets() {
 
   if (loading) return <div className="p-8 text-gray-400">Loading…</div>
 
-  // Before lock, everyone's picks are hidden from other players (admins exempt).
-  if (!locked && !user?.is_admin) {
-    const submittedCount = allBrackets.filter(b => b.submitted).length
-    return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center">
-        <div className="text-5xl mb-4">🔒</div>
-        <h1 className="text-2xl font-bold text-white mb-2">Brackets are hidden</h1>
-        <p className="text-gray-400">
-          Everyone’s picks stay secret until the admin locks submissions
-          {lockTime ? <> on <span className="text-fifa-gold">{new Date(lockTime).toLocaleString()}</span></> : ''}.
-          Once locked, every bracket is revealed here.
-        </p>
-        <p className="text-gray-500 text-sm mt-4">
-          {submittedCount} of {allBrackets.length} players have submitted so far.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold text-white mb-6">All Brackets</h1>

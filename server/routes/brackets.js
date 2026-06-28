@@ -110,7 +110,7 @@ router.get('/', optionalAuth, (req, res) => {
     const picks = row ? JSON.parse(row.picks) : null
     const score = picks ? computeScore(picks, groupResults, knockoutResults) : 0
     if (row) db.updateBracketScore(user.id, score)
-    const canSeePicks = locked || isKnockoutLocked() || isAdmin || user.id === requesterId
+    const canSeePicks = !!req.user
     return {
       user_id: user.id,
       username: user.username,
