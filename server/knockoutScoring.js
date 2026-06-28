@@ -103,8 +103,12 @@ export function scoreKnockoutForUser(bracket, scorePicksByMatch, actuals) {
  */
 export function computeKnockoutScores(bracketsByUser, scorePicksByUser, actuals) {
   const out = {}
-  for (const [userId, bracket] of Object.entries(bracketsByUser)) {
-    out[userId] = scoreKnockoutForUser(bracket, scorePicksByUser[userId] || {}, actuals)
+  const allUserIds = new Set([
+    ...Object.keys(bracketsByUser),
+    ...Object.keys(scorePicksByUser),
+  ])
+  for (const userId of allUserIds) {
+    out[userId] = scoreKnockoutForUser(bracketsByUser[userId] || {}, scorePicksByUser[userId] || {}, actuals)
   }
   return out
 }
