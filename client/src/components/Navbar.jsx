@@ -39,8 +39,8 @@ export default function Navbar() {
             {link('/bracket', '🏆 My Bracket')}
             {link('/all', 'All Picks')}
             {link('/brackets', 'All Brackets')}
-            {link('/overall', '🏆 Overall')}
-            {link('/leaderboard', 'Group Stage')}
+            {link('/overall', '🏆 Overall LB')}
+            {link('/leaderboard', '📋 GS LB')}
             {link('/faq', 'Rules')}
             {!!user.is_admin && link('/admin', '⚙ Admin')}
 

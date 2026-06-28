@@ -39,61 +39,71 @@ function _rngPoisson(lambda) {
   return k - 1
 }
 
-// Cache: only recompute when the set of completed match scores changes.
-// Key = sorted "matchId:h-a" strings joined — changes the moment any new
-// result is recorded (or an existing one is corrected).
+// Cache: recompute when completed match scores or known knockout teams change.
+// Key = sorted "matchId:h-a:winner:home_team" strings.
 let _winPctCache = null  // { hash: string, winPcts: Object }
 
 function _scoresHash(allScores) {
   return allScores
-    .filter(s => s.home_goals != null && s.away_goals != null)
-    .map(s => `${s.match_id}:${s.home_goals}-${s.away_goals}`)
+    .filter(s => (s.home_goals != null && s.away_goals != null) || s.winner || s.home_team)
+    .map(s => `${s.match_id}:${s.home_goals ?? '?'}-${s.away_goals ?? '?'}:${s.winner || ''}:${s.home_team || ''}`)
     .sort()
     .join('|')
 }
 
 /**
- * Monte Carlo estimate of each non-admin user's probability (0–100) of
- * finishing in 1st place overall.
+ * Monte Carlo estimate of each non-admin user's probability (0-100) of
+ * finishing 1st overall (group + knockout combined score).
  *
- * Result is cached by a hash of the completed match scores and returned
- * immediately on every subsequent call until a score actually changes.
- * The simulation only reruns when new results are recorded.
+ * For each simulated universe:
+ *  - Group matches: Poisson(1.35) scoreline -> 10/6/4/0 pts
+ *  - Knockout R32: same scoreline bonus + +10 advance if bracket pick == simulated winner
+ *  - Knockout R16+: +10 advance if bracket pick == simulated winner (scoreline skipped
+ *    because matchup-correct check is too complex to simulate inline)
+ *  - Bracket chain: simulated R32 winners feed into R16 matchups, etc.
+ *  - Draws in knockout: coin-flip (penalty shootout)
  *
- * For every remaining match (no result yet) we simulate independent
- * Poisson(1.35) goals for each team, score every player's pick with the
- * standard 10/6/4/0 rules, and tally who ends up on top.  Ties are split
- * equally.  Completed matches already contribute to `computedScores` so
- * only the *future* uncertainty is simulated.
- *
- * @param {Array}  allPicks       db.getAllScorePicks()
+ * @param {Array}  allPicks       all score picks (group + knockout)
  * @param {Array}  allScores      db.getAllMatchScores()
  * @param {Array}  players        non-admin users
- * @param {Object} computedScores scoreMap from computeAllScores()
- * @returns {Object} { userId: winPct }  e.g. { 3: 28.4, 7: 9.0, … }
+ * @param {Object} computedScores { [uid]: { total } } -- full group+knockout totals
+ * @param {Object} bracketPicks   { [uid]: { [matchId]: teamName } } -- advancement picks
  */
-function computeWinPcts(allPicks, allScores, players, computedScores) {
-  // Return cached result if scores haven't changed
+function computeWinPcts(allPicks, allScores, players, computedScores, bracketPicks = {}) {
   const hash = _scoresHash(allScores)
   if (_winPctCache?.hash === hash) return _winPctCache.winPcts
 
   const uids = players.map(u => u.id)
   if (uids.length === 0) return {}
 
-  // Nested pick lookup: pickLookup[uid][matchId] = { home_goals, away_goals }
+  // Score pick lookup: pickLookup[uid][matchId]
   const pickLookup = {}
   for (const p of allPicks) {
     if (!pickLookup[p.user_id]) pickLookup[p.user_id] = {}
     pickLookup[p.user_id][p.match_id] = { home_goals: p.home_goals, away_goals: p.away_goals }
   }
 
-  // Matches still without a result
+  // Known knockout team/winner data from match_scores
+  const knownTeams = {}
+  for (const s of allScores) {
+    if (s.home_team || s.away_team || s.winner) {
+      knownTeams[s.match_id] = {
+        home_team: s.home_team || null,
+        away_team: s.away_team || null,
+        winner:    s.winner    || null,
+      }
+    }
+  }
+
+  // "Finished" = scoreline recorded OR winner recorded
   const finished = new Set(
-    allScores.filter(s => s.home_goals != null && s.away_goals != null).map(s => s.match_id)
+    allScores
+      .filter(s => (s.home_goals != null && s.away_goals != null) || s.winner)
+      .map(s => s.match_id)
   )
   const pending = ALL_MATCHES.filter(m => !finished.has(m.id))
 
-  // No matches left → deterministic result
+  // No matches remaining -> deterministic
   if (pending.length === 0) {
     const peak = Math.max(0, ...uids.map(uid => computedScores[uid]?.total || 0))
     const topUids = uids.filter(uid => (computedScores[uid]?.total || 0) === peak)
@@ -106,23 +116,58 @@ function computeWinPcts(allPicks, allScores, players, computedScores) {
   const wins = Object.fromEntries(uids.map(uid => [uid, 0]))
 
   for (let sim = 0; sim < _SIM_N; sim++) {
-    // Seed each player's running total from already-scored matches
+    // Start from each player's current combined total
     const totals = {}
     for (const uid of uids) totals[uid] = computedScores[uid]?.total || 0
 
-    // Simulate each unplayed match
+    // Track simulated winners so later rounds can resolve teams
+    const simWinners = {}
+    for (const [mid, info] of Object.entries(knownTeams)) {
+      if (info.winner) simWinners[mid] = info.winner
+    }
+
     for (const match of pending) {
+      const isKnockout = match.round !== 'Group'
+
+      // Resolve actual team names (R16+ depends on simulated R32 winners)
+      let homeTeam = knownTeams[match.id]?.home_team || null
+      let awayTeam = knownTeams[match.id]?.away_team || null
+      if (!homeTeam && isKnockout && typeof match.home === 'object' && match.home?.win) {
+        homeTeam = simWinners[match.home.win] || null
+      }
+      if (!awayTeam && isKnockout && typeof match.away === 'object' && match.away?.win) {
+        awayTeam = simWinners[match.away.win] || null
+      }
+
       const rh = _rngPoisson(_GOAL_LAMBDA)
       const ra = _rngPoisson(_GOAL_LAMBDA)
+
+      // Simulated winner (knockout draws -> coin-flip penalty)
+      let simWinner = null
+      if (homeTeam && awayTeam) {
+        if (rh > ra)          simWinner = homeTeam
+        else if (ra > rh)     simWinner = awayTeam
+        else if (isKnockout)  simWinner = Math.random() < 0.5 ? homeTeam : awayTeam
+      }
+      if (simWinner) simWinners[match.id] = simWinner
+
       for (const uid of uids) {
-        const pick = pickLookup[uid]?.[match.id]
-        if (!pick) continue
-        const pts = scoreMatch(pick, { home_goals: rh, away_goals: ra })
-        if (pts) totals[uid] += pts
+        // Scoreline bonus: group always; R32 always; R16+ skip (matchup-correct)
+        if (!isKnockout || match.round === 'R32') {
+          const pick = pickLookup[uid]?.[match.id]
+          if (pick?.home_goals != null) {
+            totals[uid] += scoreMatch(pick, { home_goals: rh, away_goals: ra })
+          }
+        }
+
+        // Advancement bonus: +10 if bracket pick == simulated winner
+        if (isKnockout && simWinner) {
+          const bp = bracketPicks[uid]?.[match.id]
+          if (bp && bp === simWinner) totals[uid] += 10
+        }
       }
     }
 
-    // Credit the winner(s) — ties share the credit equally
     const peak = Math.max(...uids.map(uid => totals[uid]))
     const topUids = uids.filter(uid => totals[uid] === peak)
     const share = 1.0 / topUids.length
@@ -135,6 +180,7 @@ function computeWinPcts(allPicks, allScores, players, computedScores) {
   _winPctCache = { hash, winPcts }
   return winPcts
 }
+
 
 function isPicksLocked() {
   if (db.getSetting('picks_locked') === 'true') return true
@@ -306,8 +352,23 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
   const groupScores = computeAllScores(groupPicks, allScores)
   const koScores = knockoutTotalsByUser(players, allPicks)
 
-  // Win % stays a group-stage projection (shown only in the Group view client-side).
-  const winPcts = computeWinPcts(groupPicks, allScores, players, groupScores)
+  // Build bracket advancement picks for win% simulation (who each player predicted to advance)
+  const bracketPicksForSim = {}
+  for (const u of players) {
+    const row = db.getBracketByUserId(u.id)
+    if (!row) continue
+    try {
+      const p = JSON.parse(row.picks)
+      if (p?.knockout) bracketPicksForSim[u.id] = p.knockout
+    } catch {}
+  }
+
+  // Win% simulation uses full combined totals + all picks + bracket advancement picks
+  const combinedScores = {}
+  for (const u of players) {
+    combinedScores[u.id] = { total: (groupScores[u.id]?.total || 0) + (koScores[u.id]?.total || 0) }
+  }
+  const winPcts = computeWinPcts(allPicks, allScores, players, combinedScores, bracketPicksForSim)
 
   const leaderboard = players
     .map(u => {
