@@ -40,20 +40,24 @@ function fmtLiveClock(live) {
   return plusMatch ? `${mins}+${plusMatch[1]}'` : `${mins}'`
 }
 
-function pickBoxClass(pts) {
+function pickBoxClass(pts, hasPick) {
+  if (!hasPick)   return 'bg-red-950/60 border-red-700'
   if (pts === 10) return 'bg-green-700/45 border-green-500'
   if (pts === 6)  return 'bg-yellow-700/45 border-yellow-400'
   if (pts === 4)  return 'bg-blue-700/45 border-blue-500'
   if (pts === 0)  return 'bg-red-950/60 border-red-700'
   return 'bg-gray-800/60 border-gray-700/40'
 }
-function pickBoxClassKo(pts) {
+// KO: 4 distinct tiers — 20 gold, 16 green, 14 teal, 10 blue, 0/no-pick red
+function pickBoxClassKo(pts, hasAdvancePick) {
+  if (!hasAdvancePick) return 'bg-red-950/60 border-red-700'
   if (pts == null) return 'bg-gray-800/60 border-gray-700/40'
-  if (pts >= 14)  return 'bg-green-700/45 border-green-500'
-  if (pts >= 10)  return 'bg-yellow-700/45 border-yellow-400'
-  if (pts > 0)    return 'bg-blue-700/45 border-blue-500'
-  if (pts === 0)  return 'bg-red-950/60 border-red-700'
-  return 'bg-gray-800/60 border-gray-700/40'
+  if (pts >= 20)  return 'bg-amber-600/45 border-amber-400'
+  if (pts >= 16)  return 'bg-green-700/45 border-green-500'
+  if (pts >= 14)  return 'bg-teal-700/45 border-teal-500'
+  if (pts >= 10)  return 'bg-blue-700/45 border-blue-500'
+  if (pts > 0)    return 'bg-indigo-900/40 border-indigo-700'
+  return 'bg-red-950/60 border-red-700'
 }
 
 // Solid, high-contrast points pill — the filled color makes each tier unmistakable.
@@ -65,9 +69,11 @@ function ptsPill(pts) {
 }
 function ptsPillKo(pts) {
   if (pts == null) return ''
-  if (pts >= 14) return 'bg-green-500 text-green-950'
-  if (pts >= 10) return 'bg-yellow-400 text-yellow-950'
-  if (pts > 0)   return 'bg-blue-500 text-white'
+  if (pts >= 20) return 'bg-amber-500 text-amber-950'
+  if (pts >= 16) return 'bg-green-500 text-green-950'
+  if (pts >= 14) return 'bg-teal-500 text-teal-950'
+  if (pts >= 10) return 'bg-blue-500 text-white'
+  if (pts > 0)   return 'bg-indigo-600 text-white'
   return 'bg-red-600 text-white'
 }
 
@@ -538,10 +544,11 @@ export default function AllPicks() {
                           {users.map(u => {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
+                            const advancePick = isKo ? (u.bracket_picks?.[m.id] ?? null) : null
+                            const hasAdvancePick = isKo ? !!advancePick : false
                             const pts = isKo
                               ? (resultIn || result?.winner ? (u.knockout_breakdown?.[m.id]?.total ?? null) : null)
                               : calcPts(pick, result)
-                            // Live provisional pts for in-play matches (scoreline portion only)
                             const livePts = !resultIn && live?.home_score != null && hasPick
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
                               : null
@@ -552,7 +559,7 @@ export default function AllPicks() {
                               <div
                                 key={u.user_id}
                                 className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  isKo ? pickBoxClassKo(showPts) : pickBoxClass(showPts)
+                                  isKo ? pickBoxClassKo(showPts, hasAdvancePick) : pickBoxClass(showPts, hasPick)
                                 } ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
@@ -572,17 +579,16 @@ export default function AllPicks() {
                                     )}
                                   </>
                                 ) : (
-                                  <span className="text-gray-600 text-[9px]">–</span>
+                                  <span className="text-gray-400 text-[9px]">—</span>
                                 )}
-                                {isKo && u.bracket_picks?.[m.id] && (() => {
-                                  const picked = u.bracket_picks[m.id]
+                                {isKo && advancePick && (() => {
                                   const actual = result?.winner
                                   const cls = actual == null ? 'text-gray-500'
-                                    : actual === picked ? 'text-green-400'
+                                    : actual === advancePick ? 'text-green-400'
                                     : 'text-red-400'
                                   return (
                                     <span className={`text-[8px] truncate max-w-[4.5rem] ${cls}`}>
-                                      →{getFlag(picked)} {picked}
+                                      →{getFlag(advancePick)} {advancePick}
                                     </span>
                                   )
                                 })()}
@@ -660,49 +666,94 @@ export default function AllPicks() {
                           {users.map(u => {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
-                            const pts = isKo
-                              ? (u.knockout_breakdown?.[m.id]?.total ?? null)
-                              : calcPts(pick, result)
+                            const koPtsObj = isKo ? (u.knockout_breakdown?.[m.id] ?? null) : null
+                            const advancePick = isKo ? (u.bracket_picks?.[m.id] ?? null) : null
+                            const hasAdvancePick = isKo ? !!advancePick : false
+                            const pts = isKo ? (koPtsObj?.total ?? null) : calcPts(pick, result)
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (
                               <div
                                 key={u.user_id}
                                 className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  isKo ? pickBoxClassKo(pts) : pickBoxClass(pts)
+                                  isKo ? pickBoxClassKo(pts, hasAdvancePick) : pickBoxClass(pts, hasPick)
                                 } ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
                               >
-                                <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
+                                <span className={`text-[9px] truncate max-w-[4.5rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
                                 </span>
-                                {hasPick ? (
+                                {isKo ? (
                                   <>
-                                    <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
-                                      {pick.home_goals}–{pick.away_goals}
-                                    </span>
-                                    {pts != null && (
-                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${
-                                        isKo ? ptsPillKo(pts) : ptsPill(pts)
-                                      }`}>
-                                        {pts > 0 ? `+${pts}` : '✗'}
+                                    {/* Score pick */}
+                                    {hasPick ? (
+                                      <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
+                                        {pick.home_goals}–{pick.away_goals}
                                       </span>
+                                    ) : (
+                                      <span className="text-gray-500 text-[9px]">—</span>
                                     )}
+                                    {/* Advance pick */}
+                                    {advancePick ? (
+                                      <span className={`text-[8px] truncate max-w-[4.5rem] leading-tight ${
+                                        result?.winner == null ? 'text-gray-500'
+                                        : result.winner === advancePick ? 'text-green-400'
+                                        : 'text-red-400'
+                                      }`}>
+                                        →{getFlag(advancePick)} {advancePick}
+                                        {result?.winner === advancePick ? ' ✓' : result?.winner ? ' ✗' : ''}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-400 text-[8px]">—</span>
+                                    )}
+                                    {/* Breakdown: score pts + +10 advance + total */}
+                                    {koPtsObj && (() => {
+                                      const sp  = koPtsObj.score ?? 0
+                                      const ap  = koPtsObj.advance ?? 0
+                                      const tot = koPtsObj.total ?? 0
+                                      return (
+                                        <div className="flex items-center gap-0.5 mt-0.5 justify-center flex-wrap">
+                                          {hasPick && (
+                                            <span className={`px-1 rounded text-[8px] font-bold leading-tight ${
+                                              sp === 10 ? 'bg-green-500 text-green-950'
+                                              : sp === 6 ? 'bg-yellow-400 text-yellow-950'
+                                              : sp === 4 ? 'bg-blue-500 text-white'
+                                              : 'bg-gray-700/70 text-gray-400'
+                                            }`}>+{sp}</span>
+                                          )}
+                                          <span className={`px-1 rounded text-[8px] font-bold leading-tight ${
+                                            ap === 10 ? 'bg-emerald-600 text-white' : 'bg-red-900/80 text-red-400'
+                                          }`}>
+                                            {ap === 10 ? '+10 ✓' : '✗'}
+                                          </span>
+                                          {tot > 0 && (
+                                            <span className={`text-[8px] font-black tabular-nums ${
+                                              tot >= 20 ? 'text-amber-300'
+                                              : tot >= 16 ? 'text-green-300'
+                                              : tot >= 14 ? 'text-teal-300'
+                                              : 'text-blue-300'
+                                            }`}>={tot}</span>
+                                          )}
+                                        </div>
+                                      )
+                                    })()}
                                   </>
                                 ) : (
-                                  <span className="text-gray-600 text-[9px]">–</span>
-                                )}
-                                {isKo && u.bracket_picks?.[m.id] && (() => {
-                                  const picked = u.bracket_picks[m.id]
-                                  const actual = result?.winner
-                                  const cls = actual == null ? 'text-gray-500'
-                                    : actual === picked ? 'text-green-400'
-                                    : 'text-red-400'
-                                  return (
-                                    <span className={`text-[8px] truncate max-w-[4.5rem] ${cls}`}>
-                                      →{getFlag(picked)} {picked}
-                                    </span>
+                                  /* Group picks */
+                                  hasPick ? (
+                                    <>
+                                      <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
+                                        {pick.home_goals}–{pick.away_goals}
+                                      </span>
+                                      {pts != null && (
+                                        <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${ptsPill(pts)}`}>
+                                          {pts > 0 ? `+${pts}` : '✗'}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="text-gray-400 text-[9px]">—</span>
                                   )
-                                })()}
+                                )}
                               </div>
                             )
                           })}
