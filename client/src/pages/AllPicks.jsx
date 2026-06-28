@@ -544,8 +544,9 @@ export default function AllPicks() {
                             const hasPick = pick?.home_goals != null
                             const advancePick = isKo ? (u.bracket_picks?.[m.id] ?? null) : null
                             const hasAdvancePick = isKo ? !!advancePick : false
+                            const advanceWrong = isKo && hasAdvancePick && !!result?.winner && advancePick !== result.winner
                             const pts = isKo
-                              ? (resultIn || result?.winner ? (u.knockout_breakdown?.[m.id]?.total ?? null) : null)
+                              ? (resultIn || result?.winner ? (u.knockout_breakdown?.[m.id]?.total ?? (advanceWrong ? 0 : null)) : null)
                               : calcPts(pick, result)
                             const livePts = !resultIn && live?.home_score != null && hasPick
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
@@ -667,7 +668,8 @@ export default function AllPicks() {
                             const koPtsObj = isKo ? (u.knockout_breakdown?.[m.id] ?? null) : null
                             const advancePick = isKo ? (u.bracket_picks?.[m.id] ?? null) : null
                             const hasAdvancePick = isKo ? !!advancePick : false
-                            const pts = isKo ? (koPtsObj?.total ?? null) : calcPts(pick, result)
+                            const advanceWrong = isKo && hasAdvancePick && !!result?.winner && advancePick !== result.winner
+                            const pts = isKo ? (koPtsObj?.total ?? (advanceWrong ? 0 : null)) : calcPts(pick, result)
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (
@@ -704,7 +706,7 @@ export default function AllPicks() {
                                       <span className="text-gray-400 text-[8px]">—</span>
                                     )}
                                     {/* Breakdown: score pts + +10 advance + total */}
-                                    {koPtsObj && (() => {
+                                    {koPtsObj ? (() => {
                                       const sp  = koPtsObj.score ?? 0
                                       const ap  = koPtsObj.advance ?? 0
                                       const tot = koPtsObj.total ?? 0
@@ -734,7 +736,11 @@ export default function AllPicks() {
                                           )}
                                         </div>
                                       )
-                                    })()}
+                                    })() : advanceWrong ? (
+                                      <div className="flex items-center gap-0.5 mt-0.5 justify-center">
+                                        <span className="px-1 rounded text-[8px] font-bold leading-tight bg-red-600 text-white">✗</span>
+                                      </div>
+                                    ) : null}
                                   </>
                                 ) : (
                                   /* Group picks */
