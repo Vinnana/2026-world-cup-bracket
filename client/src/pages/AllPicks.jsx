@@ -41,23 +41,23 @@ function fmtLiveClock(live) {
 }
 
 function pickBoxClass(pts, hasPick) {
-  if (!hasPick)   return 'bg-red-950/60 border-red-700'
+  if (!hasPick)   return 'bg-red-900/80 border-red-600'
   if (pts === 10) return 'bg-green-700/45 border-green-500'
   if (pts === 6)  return 'bg-yellow-700/45 border-yellow-400'
   if (pts === 4)  return 'bg-blue-700/45 border-blue-500'
-  if (pts === 0)  return 'bg-red-950/60 border-red-700'
+  if (pts === 0)  return 'bg-red-900/80 border-red-600'
   return 'bg-gray-800/60 border-gray-700/40'
 }
 // KO: 4 distinct tiers — 20 gold, 16 green, 14 teal, 10 blue, 0/no-pick red
 function pickBoxClassKo(pts, hasAdvancePick) {
-  if (!hasAdvancePick) return 'bg-red-950/60 border-red-700'
+  if (!hasAdvancePick) return 'bg-red-900/80 border-red-600'
   if (pts == null) return 'bg-gray-800/60 border-gray-700/40'
   if (pts >= 20)  return 'bg-amber-600/45 border-amber-400'
   if (pts >= 16)  return 'bg-green-700/45 border-green-500'
-  if (pts >= 14)  return 'bg-teal-700/45 border-teal-500'
+  if (pts >= 14)  return 'bg-orange-700/45 border-orange-500'
   if (pts >= 10)  return 'bg-blue-700/45 border-blue-500'
   if (pts > 0)    return 'bg-indigo-900/40 border-indigo-700'
-  return 'bg-red-950/60 border-red-700'
+  return 'bg-red-900/80 border-red-600'
 }
 
 // Solid, high-contrast points pill — the filled color makes each tier unmistakable.
@@ -71,7 +71,7 @@ function ptsPillKo(pts) {
   if (pts == null) return ''
   if (pts >= 20) return 'bg-amber-500 text-amber-950'
   if (pts >= 16) return 'bg-green-500 text-green-950'
-  if (pts >= 14) return 'bg-teal-500 text-teal-950'
+  if (pts >= 14) return 'bg-orange-500 text-orange-950'
   if (pts >= 10) return 'bg-blue-500 text-white'
   if (pts > 0)   return 'bg-indigo-600 text-white'
   return 'bg-red-600 text-white'
@@ -729,7 +729,7 @@ export default function AllPicks() {
                                             <span className={`text-[8px] font-black tabular-nums ${
                                               tot >= 20 ? 'text-amber-300'
                                               : tot >= 16 ? 'text-green-300'
-                                              : tot >= 14 ? 'text-teal-300'
+                                              : tot >= 14 ? 'text-orange-300'
                                               : 'text-blue-300'
                                             }`}>={tot}</span>
                                           )}
