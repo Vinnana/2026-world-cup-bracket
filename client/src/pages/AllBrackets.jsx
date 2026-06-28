@@ -1,30 +1,42 @@
 import { useState, useEffect, useMemo } from 'react'
-import { brackets, tournament } from '../api'
+import { brackets, tournament, picks as picksApi } from '../api'
 import { useAuth } from '../context/AuthContext'
-import KnockoutBracket from '../components/KnockoutBracket'
+import { KnockoutBracketWithScores } from '../components/KnockoutBracketScored'
 
 const displayName = (u) => u.replace(/@.+$/, '')
 
 export default function AllBrackets() {
   const { user } = useAuth()
-  const [allBrackets, setAllBrackets] = useState([])
-  const [selected, setSelected]       = useState(null)
-  const [knockout, setKnockout]       = useState([])
-  const [results, setResults]         = useState({ groups: {}, knockout: {} })
-  const [loading, setLoading]         = useState(true)
-  const [search, setSearch]           = useState('')
+  const [allBrackets,   setAllBrackets]   = useState([])
+  const [selected,      setSelected]      = useState(null)
+  const [knockout,      setKnockout]      = useState([])
+  const [results,       setResults]       = useState({ groups: {}, knockout: {} })
+  const [matchResults,  setMatchResults]  = useState({})   // matchId → { home_goals, away_goals }
+  const [teamOverrides, setTeamOverrides] = useState({})   // matchId → { home, away } from ESPN
+  const [allPicksData,  setAllPicksData]  = useState(null) // picks.all() (null if hidden/unavailable)
+  const [loading,       setLoading]       = useState(true)
+  const [search,        setSearch]        = useState('')
 
   useEffect(() => {
     async function load() {
-      const [tourney, all, res] = await Promise.all([
+      const [tourney, all, res, matchRes] = await Promise.all([
         tournament.data(),
         brackets.all(),
         brackets.results(),
+        picksApi.matches(),
       ])
       setKnockout(tourney.data.knockout || [])
       setAllBrackets(all.data.brackets || [])
       setResults(res.data || { groups: {}, knockout: {} })
-      // Default to own bracket if submitted, else first submitted
+      setMatchResults(matchRes.data.results || {})
+      setTeamOverrides(matchRes.data.team_overrides || {})
+
+      // Score picks are visible to admins or once locked
+      try {
+        const ap = await picksApi.all()
+        if (!ap.data.hidden) setAllPicksData(ap.data)
+      } catch {}
+
       const mine   = all.data.brackets.find(b => b.user_id === user?.id)
       const first  = all.data.brackets.find(b => b.submitted)
       setSelected((mine?.submitted ? mine : first)?.user_id ?? null)
@@ -33,19 +45,56 @@ export default function AllBrackets() {
     load()
   }, [])
 
-  // Build actualTeams from knockout results (real home/away once matchups are known)
-  const actualTeams = useMemo(() => {
-    const at = {}
-    for (const [id, r] of Object.entries(results.knockout || {})) {
-      if (r.home_team && r.away_team) at[id] = { home: r.home_team, away: r.away_team }
-    }
-    return at
-  }, [results.knockout])
+  const viewing     = allBrackets.find(b => b.user_id === selected)
+  const submitted   = allBrackets.filter(b => b.submitted)
+  const noPicks     = allBrackets.filter(b => !b.submitted)
+  const matchesFn   = (b) => !search || displayName(b.username).toLowerCase().includes(search.toLowerCase())
 
-  const viewing    = allBrackets.find(b => b.user_id === selected)
-  const submitted  = allBrackets.filter(b => b.submitted)
-  const noPicks    = allBrackets.filter(b => !b.submitted)
-  const matches    = (b) => !search || displayName(b.username).toLowerCase().includes(search.toLowerCase())
+  // Score picks for the selected user (KO matches only)
+  const viewingScorePicks = useMemo(() => {
+    if (!allPicksData || !selected) return {}
+    const userData = allPicksData.users?.find(u => u.user_id === selected)
+    if (!userData) return {}
+    const koMap = {}
+    for (const [mid, pick] of Object.entries(userData.picks || {})) {
+      if (parseInt(mid.replace('m', '')) >= 73) koMap[mid] = pick
+    }
+    return koMap
+  }, [allPicksData, selected])
+
+  // Build resolvedTeams: ESPN actuals first, then cascade through user's bracket picks
+  const resolvedTeams = useMemo(() => {
+    if (!viewing || !knockout.length) return {}
+    const knockoutPicks = viewing.picks?.knockout || {}
+    const groupPicksMap = results.groups || {}
+
+    function resolveSide(side, built) {
+      if (typeof side === 'string') {
+        if (side.startsWith('3RD:')) return null
+        const gpg = groupPicksMap[side[1]]
+        return gpg ? (side[0] === '1' ? gpg.first : gpg.second) : null
+      }
+      if (side?.win)  return knockoutPicks[side.win] || null
+      if (side?.lose) {
+        const teams  = built[side.lose]
+        const winner = knockoutPicks[side.lose]
+        if (!teams || !winner) return null
+        return teams.home === winner ? teams.away : teams.away === winner ? teams.home : null
+      }
+      return null
+    }
+
+    const built = {}
+    for (const m of knockout) {
+      const actual = teamOverrides[m.id]
+      if (actual?.home && actual?.away) {
+        built[m.id] = { home: actual.home, away: actual.away }
+      } else {
+        built[m.id] = { home: resolveSide(m.home, built), away: resolveSide(m.away, built) }
+      }
+    }
+    return built
+  }, [viewing, knockout, results.groups, teamOverrides])
 
   if (loading) return <div className="p-8 text-gray-400 text-center">Loading…</div>
 
@@ -70,7 +119,7 @@ export default function AllBrackets() {
           />
         )}
         <div className="flex flex-wrap gap-2">
-          {submitted.filter(matches).map(b => (
+          {submitted.filter(matchesFn).map(b => (
             <button
               key={b.user_id}
               onClick={() => setSelected(b.user_id)}
@@ -86,7 +135,7 @@ export default function AllBrackets() {
               </span>
             </button>
           ))}
-          {noPicks.filter(matches).map(b => (
+          {noPicks.filter(matchesFn).map(b => (
             <button
               key={b.user_id}
               onClick={() => setSelected(b.user_id)}
@@ -103,21 +152,23 @@ export default function AllBrackets() {
       {/* Bracket */}
       {viewing?.submitted ? (
         <div className="card p-0 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3">
+          <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 flex-wrap">
             <span className="font-semibold text-white">{displayName(viewing.username)}'s Bracket</span>
             <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full tabular-nums">
               {viewing.score} pts
             </span>
+            {!allPicksData && (
+              <span className="text-xs text-gray-500 italic ml-auto">Score picks hidden until locked</span>
+            )}
           </div>
           <div className="p-4">
-            {/* groupPicks = results.groups so R32 slot codes resolve to real team names */}
-            <KnockoutBracket
+            <KnockoutBracketWithScores
               knockout={knockout}
-              groupPicks={results.groups}
-              knockoutPicks={viewing.picks.knockout || {}}
-              results={results}
-              actualTeams={actualTeams}
-              readOnly
+              scorePicks={viewingScorePicks}
+              knockoutPicks={viewing.picks?.knockout || {}}
+              matchResults={matchResults}
+              locked={true}
+              resolvedTeams={resolvedTeams}
             />
           </div>
         </div>

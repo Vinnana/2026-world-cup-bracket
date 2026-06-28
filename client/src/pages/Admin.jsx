@@ -621,6 +621,106 @@ export default function Admin() {
     }
   }
 
+  // ── CSV export ──────────────────────────────────────────────────────────────
+  const [csvLoading, setCsvLoading] = useState(false)
+  const [csvMsg,     setCsvMsg]     = useState('')
+
+  const KO_ROUNDS_CSV = [
+    { label: 'R32',   ids: ['m73','m74','m75','m76','m77','m78','m79','m80','m81','m82','m83','m84','m85','m86','m87','m88'] },
+    { label: 'R16',   ids: ['m89','m90','m91','m92','m93','m94','m95','m96'] },
+    { label: 'QF',    ids: ['m97','m98','m99','m100'] },
+    { label: 'SF',    ids: ['m101','m102'] },
+    { label: '3rd',   ids: ['m103'] },
+    { label: 'Final', ids: ['m104'] },
+  ]
+  const ALL_KO_IDS = KO_ROUNDS_CSV.flatMap(r => r.ids)
+
+  async function handleDownloadCSV() {
+    setCsvLoading(true)
+    setCsvMsg('')
+    try {
+      const [apRes, msRes, brRes] = await Promise.all([
+        picksApi.all(),
+        picksApi.matches(),
+        brackets.all(),
+      ])
+      const apData = apRes.data
+      const teamOverrides = msRes.data.team_overrides || {}
+      const allBracketsArr = brRes.data.brackets || []
+
+      // Match number lookup (match_no per id)
+      const matchNoMap = {}
+      if (apData.matches) {
+        for (const m of apData.matches) matchNoMap[m.id] = m.no
+      }
+
+      // Team name per match from ESPN overrides
+      function teamLabel(mid) {
+        const ov = teamOverrides[mid]
+        if (ov?.home && ov?.away) return `${ov.home} v ${ov.away}`
+        return 'TBD'
+      }
+
+      // Build header
+      const roundLabel = {}
+      for (const r of KO_ROUNDS_CSV) for (const id of r.ids) roundLabel[id] = r.label
+
+      const escCsv = (s) => {
+        if (s == null) return ''
+        const str = String(s)
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) return `"${str.replace(/"/g, '""')}"`
+        return str
+      }
+
+      const headers = ['Participant', 'KO Total']
+      for (const id of ALL_KO_IDS) {
+        const no = matchNoMap[id] || id
+        const rl = roundLabel[id]
+        const tl = teamLabel(id)
+        headers.push(`${rl} M${no} (${tl}) Score Pick`)
+        headers.push(`${rl} M${no} Advance Pick`)
+      }
+
+      const rows = [headers.map(escCsv).join(',')]
+
+      // Build bracket picks map: userId → { matchId: team }
+      const bracketMap = {}
+      for (const b of allBracketsArr) {
+        if (b.picks?.knockout) bracketMap[b.user_id] = b.picks.knockout
+      }
+
+      const usersData = apData.users || []
+      for (const u of usersData) {
+        const name = u.username.replace(/@.+$/, '')
+        const row = [escCsv(name), escCsv(u.knockout_total ?? 0)]
+        const koPicks = bracketMap[u.user_id] || {}
+        for (const id of ALL_KO_IDS) {
+          const sp = u.picks?.[id]
+          const score = sp?.home_goals != null ? `${sp.home_goals}-${sp.away_goals}` : ''
+          const adv   = koPicks[id] || ''
+          row.push(escCsv(score), escCsv(adv))
+        }
+        rows.push(row.join(','))
+      }
+
+      const csv = rows.join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `knockout-picks-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setCsvMsg(`✓ Downloaded ${usersData.length} participants`)
+    } catch (err) {
+      setCsvMsg('⚠ ' + (err.response?.data?.error || err.message || 'Export failed'))
+    } finally {
+      setCsvLoading(false)
+    }
+  }
+
   const tabs = [
     { key: 'scores',   label: '⚽ Match Scores' },
     { key: 'sync',     label: '🔄 Live Scores API' },
@@ -630,6 +730,7 @@ export default function Admin() {
     { key: 'roster',   label: '📋 Roster' },
     { key: 'editpicks',     label: '✏️ Edit Picks' },
     { key: 'bracketstatus', label: '🏆 Bracket Status' },
+    { key: 'export',        label: '📥 Export CSV' },
   ]
 
   return (
@@ -1960,6 +2061,47 @@ export default function Admin() {
           </div>
         )
       })()}
+
+      {/* ── EXPORT CSV tab ─────────────────────────────────────────────────── */}
+      {tab === 'export' && (
+        <div className="space-y-4">
+          <div className="card">
+            <h3 className="font-semibold text-white mb-2">Export Knockout Picks CSV</h3>
+            <p className="text-sm text-gray-400 mb-4">
+              Downloads a CSV with all participants' knockout score picks (predicted scorelines) and bracket advancement picks for every knockout match (R32 through Final). One row per participant.
+            </p>
+
+            <div className="bg-gray-900/60 border border-gray-700/60 rounded-lg p-3 mb-4 text-xs text-gray-400">
+              <p className="font-semibold text-gray-300 mb-1">Columns included:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Participant name</li>
+                <li>KO Total points</li>
+                <li>For each match: Score Pick (e.g. 2-1) and Advance Pick (team name)</li>
+                <li>Match headers show round, match number, and team names once known</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={handleDownloadCSV}
+              disabled={csvLoading}
+              className="btn-primary flex items-center gap-2"
+            >
+              {csvLoading ? (
+                <span className="animate-spin text-base">⟳</span>
+              ) : (
+                <span>📥</span>
+              )}
+              {csvLoading ? 'Generating…' : 'Download CSV'}
+            </button>
+
+            {csvMsg && (
+              <p className={`mt-3 text-sm ${csvMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
+                {csvMsg}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {confirmDelete && (
         <div
