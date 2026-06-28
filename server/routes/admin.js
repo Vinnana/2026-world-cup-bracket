@@ -2,7 +2,7 @@ import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import db from '../database.js'
 import { requireAdmin } from '../middleware/auth.js'
-import { GROUPS } from '../teams.js'
+import { GROUPS, KNOCKOUT } from '../teams.js'
 import { ALL_MATCHES } from '../matches.js'
 import { scoreMatch } from '../scoring.js'
 import { runResultsSync, isConfigured, activeProvider, addSyncHistory } from '../resultsFetcher.js'
@@ -341,6 +341,33 @@ router.post('/create-user', requireAdmin, async (req, res) => {
   const password_hash = await bcrypt.hash(String(password), 10)
   const user = db.createUser({ username: trimmed, password_hash })
   res.json({ success: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } })
+})
+
+// ── Bracket completion status (who has filled in their knockout bracket) ─────
+router.get('/bracket-status', requireAdmin, (req, res) => {
+  const users    = db.getAllUsers().filter(u => !u.is_admin)
+  const koTotal  = KNOCKOUT.length   // total knockout advancement picks possible
+
+  const result = users.map(u => {
+    const row = db.getBracketByUserId(u.id)
+    if (!row?.picks) {
+      return { id: u.id, username: u.username, has_bracket: false, knockout_picks: 0, has_champion: false, champion: null }
+    }
+    let bracket = {}
+    try { bracket = JSON.parse(row.picks) } catch {}
+    const kp = bracket.knockout || {}
+    const knockout_picks = Object.keys(kp).length
+    const champion = kp['m104'] || null
+    return { id: u.id, username: u.username, has_bracket: true, knockout_picks, has_champion: !!champion, champion }
+  })
+
+  // Sort: champion picked → partial → nothing; alpha within each tier
+  result.sort((a, b) => {
+    const tier = x => x.has_champion ? 2 : x.has_bracket ? 1 : 0
+    return (tier(b) - tier(a)) || a.username.localeCompare(b.username)
+  })
+
+  res.json({ users: result, knockout_total: koTotal })
 })
 
 export default router
