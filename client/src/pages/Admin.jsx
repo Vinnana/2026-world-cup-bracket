@@ -368,6 +368,16 @@ export default function Admin() {
     }
   }, [settings.picks_locked, settings.picks_lock_time, settings.knockout_picks_open, settings.knockout_picks_locked, settings.knockout_picks_lock_time, settings.effective_picks_locked, settings.effective_knockout_locked])
 
+  // Load bracket status when that tab is opened
+  useEffect(() => {
+    if (tab !== 'bracketstatus') return
+    setBracketStatusLoading(true)
+    admin.bracketStatus()
+      .then(r => setBracketStatusData(r.data))
+      .catch(() => {})
+      .finally(() => setBracketStatusLoading(false))
+  }, [tab])
+
   // Poll the effective lock status every 30 s while the picks tab is open
   useEffect(() => {
     if (tab !== 'picks') return
@@ -520,6 +530,10 @@ export default function Admin() {
     ? (allGroupMatches[scoreGroupLetter] || [])
     : (scoreKoRound ? scoreKoRound.ids.map(id => ({ id, home: 'TBD', away: 'TBD' })) : [])
 
+  // ── Bracket status tab state ─────────────────────────────────────────────
+  const [bracketStatusData, setBracketStatusData] = useState(null)
+  const [bracketStatusLoading, setBracketStatusLoading] = useState(false)
+
   // ── Admin edit picks state ───────────────────────────────────────────────
   const [editUser,         setEditUser]         = useState(null)   // { id, username }
   const [editPicksData,    setEditPicksData]    = useState(null)   // { scorePicks: map, bracket }
@@ -613,7 +627,8 @@ export default function Admin() {
     { key: 'report',   label: '📊 Report' },
     { key: 'users',    label: '👥 Users' },
     { key: 'roster',   label: '📋 Roster' },
-    { key: 'editpicks', label: '✏️ Edit Picks' },
+    { key: 'editpicks',     label: '✏️ Edit Picks' },
+    { key: 'bracketstatus', label: '🏆 Bracket Status' },
   ]
 
   return (
@@ -1825,6 +1840,104 @@ export default function Admin() {
                 )}
               </>
             )}
+          </div>
+        )
+      })()}
+
+      {/* ── BRACKET STATUS tab ─────────────────────────────────────────────── */}
+      {tab === 'bracketstatus' && (() => {
+        const statusUsers = bracketStatusData?.users || []
+        const koTotal = bracketStatusData?.knockout_total || 0
+        const nonAdminCount = statusUsers.length
+        const completedCount = statusUsers.filter(u => u.has_champion).length
+
+        return (
+          <div className="space-y-4">
+            <div className="card">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h3 className="font-semibold text-white">Bracket Completion Status</h3>
+                <button
+                  onClick={() => {
+                    setBracketStatusLoading(true)
+                    admin.bracketStatus()
+                      .then(r => setBracketStatusData(r.data))
+                      .catch(() => {})
+                      .finally(() => setBracketStatusLoading(false))
+                  }}
+                  className="btn-secondary text-xs py-1 px-3"
+                >
+                  ↻ Refresh
+                </button>
+              </div>
+
+              {bracketStatusLoading && (
+                <div className="text-center text-gray-400 py-8">Loading…</div>
+              )}
+
+              {!bracketStatusLoading && bracketStatusData && (
+                <>
+                  <div className="flex gap-4 mb-4 flex-wrap">
+                    <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-2 text-sm">
+                      <span className="text-green-400 font-bold">{completedCount}</span>
+                      <span className="text-gray-400 ml-1">/ {nonAdminCount} fully completed</span>
+                    </div>
+                    <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg px-4 py-2 text-sm">
+                      <span className="text-gray-300 font-bold">{nonAdminCount - completedCount}</span>
+                      <span className="text-gray-400 ml-1">incomplete or missing</span>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
+                          <th className="pb-2 pr-4">Status</th>
+                          <th className="pb-2 pr-4">Participant</th>
+                          <th className="pb-2 pr-4 text-center">Knockout Picks</th>
+                          <th className="pb-2">Champion Pick</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-800/60">
+                        {statusUsers.map(u => {
+                          const icon = u.has_champion ? '✅' : u.has_bracket ? '⚠️' : '❌'
+                          const rowColor = u.has_champion
+                            ? 'text-gray-200'
+                            : u.has_bracket
+                            ? 'text-yellow-200'
+                            : 'text-gray-500'
+                          return (
+                            <tr key={u.id} className={rowColor}>
+                              <td className="py-2.5 pr-4 text-base leading-none">{icon}</td>
+                              <td className="py-2.5 pr-4 font-medium">{u.username}</td>
+                              <td className="py-2.5 pr-4 text-center">
+                                {u.has_bracket ? (
+                                  <span className={u.knockout_picks === koTotal ? 'text-green-400' : 'text-yellow-400'}>
+                                    {u.knockout_picks} / {koTotal}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-600">—</span>
+                                )}
+                              </td>
+                              <td className="py-2.5">
+                                {u.champion ? (
+                                  <span className="text-fifa-gold font-medium">{u.champion}</span>
+                                ) : (
+                                  <span className="text-gray-600 italic">none</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p className="text-xs text-gray-600 mt-3">
+                    ✅ = champion picked · ⚠️ = bracket started but incomplete · ❌ = no bracket submitted
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         )
       })()}
