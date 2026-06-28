@@ -83,11 +83,24 @@ export default function Navbar() {
               </button>
             </div>
 
-            {/* Mobile: username + hamburger */}
-            <div className="md:hidden flex items-center gap-2">
-              <span className="text-xs text-gray-400 truncate max-w-[100px]">
-                {displayName(user.username)}
-              </span>
+            {/* Mobile: pinned links + hamburger */}
+            <div className="md:hidden flex items-center gap-1">
+              <Link
+                to="/all"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  isActive('/all') ? 'bg-fifa-gold text-gray-950' : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                All Picks
+              </Link>
+              <Link
+                to="/overall"
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  isActive('/overall') ? 'bg-fifa-gold text-gray-950' : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                }`}
+              >
+                🏆 Overall LB
+              </Link>
               <button
                 onClick={() => setOpen(v => !v)}
                 className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
