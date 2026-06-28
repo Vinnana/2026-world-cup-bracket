@@ -343,6 +343,73 @@ router.post('/create-user', requireAdmin, async (req, res) => {
   res.json({ success: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } })
 })
 
+// ── Generate a bracket for a user from their knockout score picks ────────────
+// Processes rounds in order (R32 → R16 → QF → SF → Third → Final).
+// For each match the winner is derived from the user's score pick; ties default
+// to the home team (match would be decided by penalties).
+router.post('/generate-bracket-from-scores', requireAdmin, (req, res) => {
+  const { userId } = req.body
+  if (!userId) return res.status(400).json({ error: 'userId required' })
+
+  const users = db.getAllUsers()
+  const user = users.find(u => String(u.id) === String(userId))
+  if (!user) return res.status(404).json({ error: 'User not found' })
+
+  // Score picks keyed by match_id
+  const scorePicksList = db.getScorePicksForUser(userId)
+  const scorePicks = {}
+  for (const sp of scorePicksList) {
+    scorePicks[sp.match_id] = { home_goals: sp.home_goals, away_goals: sp.away_goals }
+  }
+
+  // Actual team names keyed by match_id (from match_scores)
+  const allScores = db.getAllMatchScores()
+  const matchData = {}
+  for (const s of allScores) {
+    matchData[s.match_id] = { home_team: s.home_team, away_team: s.away_team }
+  }
+
+  // Build bracket round-by-round; knockout[matchId] = predicted winner
+  const knockout = {}
+
+  for (const m of KNOCKOUT) {
+    let homeTeam = null, awayTeam = null
+
+    if (m.round === 'R32' || m.round === 'Third') {
+      // Teams are fixed/externally determined → use actual match data
+      homeTeam = matchData[m.id]?.home_team || null
+      awayTeam = matchData[m.id]?.away_team || null
+    } else {
+      // Teams come from this bracket's own earlier picks
+      homeTeam = m.home?.win ? (knockout[m.home.win] || null) : null
+      awayTeam = m.away?.win ? (knockout[m.away.win] || null) : null
+    }
+
+    if (!homeTeam || !awayTeam) continue  // teams not yet known, skip
+
+    const pick = scorePicks[m.id]
+    if (pick == null || pick.home_goals == null || pick.away_goals == null) continue
+
+    // Winner from score; ties → home team (would go to penalties)
+    knockout[m.id] = pick.home_goals >= pick.away_goals ? homeTeam : awayTeam
+  }
+
+  // Preserve any existing group picks, replace knockout portion
+  const existingRow = db.getBracketByUserId(userId)
+  let existing = {}
+  if (existingRow?.picks) { try { existing = JSON.parse(existingRow.picks) } catch {} }
+
+  const merged = { groups: existing.groups || {}, knockout }
+  db.upsertBracket(userId, JSON.stringify(merged))
+
+  res.json({
+    success: true,
+    username: user.username,
+    knockout_picks: Object.keys(knockout).length,
+    champion: knockout['m104'] || null,
+  })
+})
+
 // ── Bracket completion status (who has filled in their knockout bracket) ─────
 router.get('/bracket-status', requireAdmin, (req, res) => {
   const users    = db.getAllUsers().filter(u => !u.is_admin)

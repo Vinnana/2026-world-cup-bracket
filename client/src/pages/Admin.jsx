@@ -533,6 +533,7 @@ export default function Admin() {
   // ── Bracket status tab state ─────────────────────────────────────────────
   const [bracketStatusData, setBracketStatusData] = useState(null)
   const [bracketStatusLoading, setBracketStatusLoading] = useState(false)
+  const [bracketGenLoading, setBracketGenLoading] = useState({})
 
   // ── Admin edit picks state ───────────────────────────────────────────────
   const [editUser,         setEditUser]         = useState(null)   // { id, username }
@@ -1894,7 +1895,8 @@ export default function Admin() {
                           <th className="pb-2 pr-4">Status</th>
                           <th className="pb-2 pr-4">Participant</th>
                           <th className="pb-2 pr-4 text-center">Knockout Picks</th>
-                          <th className="pb-2">Champion Pick</th>
+                          <th className="pb-2 pr-4">Champion Pick</th>
+                          <th className="pb-2">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-800/60">
@@ -1918,11 +1920,28 @@ export default function Admin() {
                                   <span className="text-gray-600">—</span>
                                 )}
                               </td>
-                              <td className="py-2.5">
+                              <td className="py-2.5 pr-4">
                                 {u.champion ? (
                                   <span className="text-fifa-gold font-medium">{u.champion}</span>
                                 ) : (
                                   <span className="text-gray-600 italic">none</span>
+                                )}
+                              </td>
+                              <td className="py-2.5">
+                                {!u.has_champion && (
+                                  <button
+                                    disabled={!!bracketGenLoading[u.id]}
+                                    onClick={() => {
+                                      setBracketGenLoading(prev => ({ ...prev, [u.id]: true }))
+                                      admin.generateBracketFromScores(u.id)
+                                        .then(() => admin.bracketStatus().then(r => setBracketStatusData(r.data)))
+                                        .catch(() => {})
+                                        .finally(() => setBracketGenLoading(prev => { const n = { ...prev }; delete n[u.id]; return n }))
+                                    }}
+                                    className="text-xs py-1 px-2 rounded bg-blue-800/50 border border-blue-600/50 text-blue-300 hover:bg-blue-700/60 disabled:opacity-40"
+                                  >
+                                    {bracketGenLoading[u.id] ? '…' : 'Generate from scores'}
+                                  </button>
                                 )}
                               </td>
                             </tr>

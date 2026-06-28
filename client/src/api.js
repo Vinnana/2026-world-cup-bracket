@@ -186,6 +186,8 @@ export const admin = {
     api.post('/admin/create-user', { username, password }),
 
   bracketStatus: () => api.get('/admin/bracket-status'),
+  generateBracketFromScores: (userId) =>
+    api.post('/admin/generate-bracket-from-scores', { userId }),
 };
 
 export default api;
