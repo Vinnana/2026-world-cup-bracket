@@ -458,8 +458,8 @@ export default function AllPicks() {
                     const result   = results[m.id]
                     const live     = liveScores[m.id]
                     const isKo     = m.round !== 'Group'
-                    const home     = typeof m.home === 'string' ? m.home : result?.home_team || null
-                    const away     = typeof m.away === 'string' ? m.away : result?.away_team || null
+                    const home     = isKo ? (result?.home_team || null) : (typeof m.home === 'string' ? m.home : null)
+                    const away     = isKo ? (result?.away_team || null) : (typeof m.away === 'string' ? m.away : null)
                     const resultIn = result?.home_goals != null
                     const roundLabel = isKo
                       ? (m.round === 'R32' ? 'R32' : m.round === 'R16' ? 'R16' :
@@ -578,8 +578,8 @@ export default function AllPicks() {
                   {dayMatches.map(m => {
                     const result = results[m.id]
                     const isKo   = m.round !== 'Group'
-                    const home   = typeof m.home === 'string' ? m.home : result?.home_team || null
-                    const away   = typeof m.away === 'string' ? m.away : result?.away_team || null
+                    const home   = isKo ? (result?.home_team || null) : (typeof m.home === 'string' ? m.home : null)
+                    const away   = isKo ? (result?.away_team || null) : (typeof m.away === 'string' ? m.away : null)
                     const resultIn = result?.home_goals != null
                     const roundLabel = isKo
                       ? (m.round === 'R32' ? 'R32' : m.round === 'R16' ? 'R16' :
