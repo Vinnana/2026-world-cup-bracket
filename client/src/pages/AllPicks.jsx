@@ -40,22 +40,19 @@ function fmtLiveClock(live) {
   return plusMatch ? `${mins}+${plusMatch[1]}'` : `${mins}'`
 }
 
-// Box tint per scoring tier — distinct hues + saturated borders so +6, +4 and ✗
-// are easy to tell apart at a glance (not just adjacent muddy shades).
 function pickBoxClass(pts) {
-  if (pts === 10) return 'bg-green-500/15 border-green-500/60'
-  if (pts === 6)  return 'bg-yellow-400/15 border-yellow-400/70'
-  if (pts === 4)  return 'bg-blue-500/20 border-blue-500/70'
-  if (pts === 0)  return 'bg-red-600/20 border-red-500/60'
+  if (pts === 10) return 'bg-green-700/45 border-green-500'
+  if (pts === 6)  return 'bg-yellow-700/45 border-yellow-400'
+  if (pts === 4)  return 'bg-blue-700/45 border-blue-500'
+  if (pts === 0)  return 'bg-red-950/60 border-red-700'
   return 'bg-gray-800/60 border-gray-700/40'
 }
-// Knockout box: pts can be 0–20 (advance + scoreline)
 function pickBoxClassKo(pts) {
   if (pts == null) return 'bg-gray-800/60 border-gray-700/40'
-  if (pts >= 14)  return 'bg-green-500/15 border-green-500/60'
-  if (pts >= 10)  return 'bg-yellow-400/15 border-yellow-400/70'
-  if (pts > 0)    return 'bg-blue-500/20 border-blue-500/70'
-  if (pts === 0)  return 'bg-red-600/20 border-red-500/60'
+  if (pts >= 14)  return 'bg-green-700/45 border-green-500'
+  if (pts >= 10)  return 'bg-yellow-700/45 border-yellow-400'
+  if (pts > 0)    return 'bg-blue-700/45 border-blue-500'
+  if (pts === 0)  return 'bg-red-950/60 border-red-700'
   return 'bg-gray-800/60 border-gray-700/40'
 }
 
