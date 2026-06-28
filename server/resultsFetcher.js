@@ -657,6 +657,11 @@ export function processMatchDates(db, matches) {
     if (!home || !away) continue
     const gId = findGroupMatchId(home, away)
     if (gId && !dateMap[gId]) { dateMap[gId] = m.utcDate; added++ }
+    else if (!gId) {
+      // Knockout: look up the match ID from already-recorded teams
+      const koId = findKnockoutMatchId(home, away, db)
+      if (koId && !dateMap[koId]) { dateMap[koId] = m.utcDate; added++ }
+    }
   }
   if (added > 0) db.setSetting('match_dates', JSON.stringify(dateMap))
   return added

@@ -8,6 +8,21 @@ import { MATCH_DATES } from '../schedule.js'
 
 const router = Router()
 
+// Merge static group-stage schedule with dynamic knockout dates stored by the ESPN fetcher.
+// Falls back to match_scores.played_at for knockout matches ESPN has populated but whose
+// kickoff date hasn't been persisted to the match_dates setting yet.
+function buildMatchDates() {
+  const dates = { ...MATCH_DATES }
+  try {
+    const stored = JSON.parse(db.getSetting('match_dates') || '{}')
+    Object.assign(dates, stored)
+  } catch {}
+  for (const s of db.getAllMatchScores()) {
+    if (!dates[s.match_id] && s.played_at) dates[s.match_id] = s.played_at
+  }
+  return dates
+}
+
 // Group-stage match ids (m1–m72) — used to keep group and knockout scoring separate.
 const GROUP_IDS = new Set(ALL_MATCHES.filter(m => m.round === 'Group').map(m => m.id))
 
@@ -273,7 +288,7 @@ router.get('/matches', optionalAuth, (req, res) => {
     locked: isPicksLocked(),
     knockout_open: isKnockoutOpen(),
     knockout_locked: isKnockoutLocked(),
-    match_dates: MATCH_DATES,
+    match_dates: buildMatchDates(),
   })
 })
 
@@ -401,7 +416,7 @@ router.get('/all', optionalAuth, (req, res) => {
     results: resultMap,
     knockout_open: isKnockoutOpen(),
     knockout_locked: isKnockoutLocked(),
-    match_dates: MATCH_DATES,
+    match_dates: buildMatchDates(),
   })
 })
 
