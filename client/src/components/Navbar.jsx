@@ -61,7 +61,7 @@ export default function Navbar() {
               <DesktopLink to="/bracket"        label="🏆 My Bracket" />
               <DesktopLink to="/all"            label="All Picks" />
               <DesktopLink to="/brackets"       label="All Brackets" />
-              <DesktopLink to="/bracket-report" label="📑 Report" />
+              {!!user.is_admin && <DesktopLink to="/bracket-report" label="📑 Report" />}
               <DesktopLink to="/overall"        label="🏆 Overall LB" />
               <DesktopLink to="/leaderboard"    label="📋 GS LB" />
               <DesktopLink to="/faq"            label="Rules" />
@@ -126,9 +126,8 @@ export default function Navbar() {
         <div className="md:hidden border-t border-gray-800 bg-fifa-blue px-4 pb-4 pt-2">
           <div className="space-y-0.5">
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold px-4 pt-3 pb-1">Tournament</p>
-            <MobileLink to="/all"            label="📊 All Picks" />
-            <MobileLink to="/brackets"       label="🗂 All Brackets" />
-            <MobileLink to="/bracket-report" label="📑 Bracket Report" />
+            <MobileLink to="/all"      label="📊 All Picks" />
+            <MobileLink to="/brackets" label="🗂 All Brackets" />
 
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold px-4 pt-3 pb-1">My Picks</p>
             <MobileLink to="/picks"   label="⚽ My Score Picks" />
@@ -140,7 +139,12 @@ export default function Navbar() {
 
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold px-4 pt-3 pb-1">Info</p>
             <MobileLink to="/faq" label="📖 Rules" />
-            {!!user.is_admin && <MobileLink to="/admin" label="⚙ Admin" />}
+            {!!user.is_admin && (
+              <>
+                <MobileLink to="/admin"          label="⚙ Admin" />
+                <MobileLink to="/bracket-report" label="📑 Bracket Report" />
+              </>
+            )}
           </div>
 
           <div className="mt-3 pt-3 border-t border-gray-800 flex items-center justify-between">

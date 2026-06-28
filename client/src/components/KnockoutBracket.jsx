@@ -1,5 +1,6 @@
 // Knockout bracket — renders every round from the official KNOCKOUT structure.
 // Teams cascade from the user's group picks (R32) and their own winner picks (later rounds).
+import { getFlag } from '../utils/flags'
 
 const ROUND_LABELS = {
   R32: 'Round of 32',
@@ -36,14 +37,21 @@ function resolveSide(side, groupPicks, knockoutPicks, matchById) {
 
 function TeamRow({ name, pickable, picked, isActualWinner, isWrong, onPick, readOnly }) {
   const isPicked = picked && name === picked
+  const flag = getFlag(name)
+
   if (!pickable) {
-    return <div className="text-xs text-gray-500 py-1.5 px-2 truncate">{name}</div>
+    return (
+      <div className="text-xs text-gray-500 py-1.5 px-2 truncate flex items-center gap-1">
+        {flag && <span>{flag}</span>}
+        <span>{name}</span>
+      </div>
+    )
   }
   return (
     <button
       onClick={() => !readOnly && onPick && onPick(name)}
       disabled={readOnly}
-      className={`w-full text-left text-xs px-2 py-1.5 rounded transition-all font-medium truncate
+      className={`w-full text-left text-xs px-2 py-1.5 rounded transition-all font-medium
         ${isPicked && isActualWinner ? 'bg-green-700 text-white' : ''}
         ${isPicked && isWrong ? 'bg-red-800 text-white line-through' : ''}
         ${isPicked && !isActualWinner && !isWrong ? 'bg-fifa-gold text-gray-950' : ''}
@@ -51,7 +59,11 @@ function TeamRow({ name, pickable, picked, isActualWinner, isWrong, onPick, read
         ${!isPicked && !isActualWinner ? 'text-gray-300 hover:bg-gray-700' : ''}
         ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
     >
-      {name}{isActualWinner ? ' ✓' : ''}
+      <span className="flex items-center gap-1 truncate">
+        {flag && <span className="shrink-0">{flag}</span>}
+        <span className="truncate">{name}</span>
+        {isActualWinner && <span className="shrink-0 text-[10px]">✓</span>}
+      </span>
     </button>
   )
 }
