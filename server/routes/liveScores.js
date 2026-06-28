@@ -20,7 +20,7 @@ import { ALL_MATCHES } from '../matches.js'
 import { KNOCKOUT } from '../teams.js'
 import db from '../database.js'
 
-const KNOCKOUT_IDS = new Set(KNOCKOUT.flatMap(r => r.matches.map(m => m.id)))
+const KNOCKOUT_IDS = new Set(KNOCKOUT.map(m => m.id))
 
 const router = Router()
 
