@@ -343,6 +343,87 @@ router.post('/create-user', requireAdmin, async (req, res) => {
   res.json({ success: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } })
 })
 
+// ── One-time import: pdai's group stage score picks ───────────────────────────
+// Picks taken directly from the admin's spreadsheet, re-oriented to match the
+// home/away order defined in ALL_MATCHES (24 matches are flipped vs the sheet).
+router.post('/import-pdai-group-picks', requireAdmin, (req, res) => {
+  const users = db.getAllUsers()
+  const pdai  = users.find(u => u.username === 'pdai')
+  if (!pdai) return res.status(404).json({ error: 'User pdai not found' })
+
+  // [match_id, home_goals, away_goals] — goals oriented to ALL_MATCHES home/away
+  const picks = [
+    // Group A
+    ['m1',  2, 1], ['m2',  2, 0], ['m3',  1, 1],
+    ['m4',  1, 1], // sheet: SA 1–Czechia 1  → Czechia(h)=1, SA(a)=1
+    ['m5',  0, 2], // sheet: Mexico 2–Czechia 0 → Czechia(h)=0, Mexico(a)=2
+    ['m6',  1, 1],
+    // Group B
+    ['m7',  1, 1], ['m8',  0, 2], ['m9',  2, 1],
+    ['m10', 2, 1], // sheet: Bosnia 1–Swiss 2 → Swiss(h)=2, Bosnia(a)=1
+    ['m11', 1, 1], // sheet: Canada 1–Swiss 1 → Swiss(h)=1, Canada(a)=1
+    ['m12', 2, 1],
+    // Group C
+    ['m13', 2, 1], ['m14', 0, 1], ['m15', 2, 0],
+    ['m16', 0, 2], // sheet: Morocco 2–Scotland 0 → Scotland(h)=0, Morocco(a)=2
+    ['m17', 0, 3], // sheet: Brazil 3–Scotland 0 → Scotland(h)=0, Brazil(a)=3
+    ['m18', 2, 0],
+    // Group D
+    ['m19', 2, 0], ['m20', 1, 1], ['m21', 1, 1],
+    ['m22', 2, 1], // sheet: Paraguay 1–Türkiye 2 → Türkiye(h)=2, Paraguay(a)=1
+    ['m23', 1, 2], // sheet: USA 2–Türkiye 1 → Türkiye(h)=1, USA(a)=2
+    ['m24', 1, 1],
+    // Group E
+    ['m25', 2, 1], ['m26', 1, 1], ['m27', 2, 1],
+    ['m28', 2, 0], // sheet: Curaçao 0–Ecuador 2 → Ecuador(h)=2, Curaçao(a)=0
+    ['m29', 1, 1], // sheet: Germany 1–Ecuador 1 → Ecuador(h)=1, Germany(a)=1
+    ['m30', 1, 2],
+    // Group F
+    ['m31', 2, 1], ['m32', 1, 0], ['m33', 2, 1],
+    ['m34', 0, 1], // sheet: Japan 1–Tunisia 0 → Tunisia(h)=0, Japan(a)=1
+    ['m35', 1, 2], // sheet: Netherlands 2–Tunisia 1 → Tunisia(h)=1, Netherlands(a)=2
+    ['m36', 1, 0],
+    // Group G
+    ['m37', 2, 1], ['m38', 1, 1], ['m39', 1, 1],
+    ['m40', 0, 1], // sheet: Egypt 1–NZ 0 → NZ(h)=0, Egypt(a)=1
+    ['m41', 0, 2], // sheet: Belgium 2–NZ 0 → NZ(h)=0, Belgium(a)=2
+    ['m42', 1, 1],
+    // Group H
+    ['m43', 3, 0], ['m44', 0, 2], ['m45', 2, 1],
+    ['m46', 2, 0], // sheet: Cape Verde 0–Uruguay 2 → Uruguay(h)=2, CV(a)=0
+    ['m47', 1, 2], // sheet: Spain 2–Uruguay 1 → Uruguay(h)=1, Spain(a)=2
+    ['m48', 0, 2],
+    // Group I
+    ['m49', 2, 1], ['m50', 0, 2], ['m51', 2, 0],
+    ['m52', 2, 1], // sheet: Senegal 1–Norway 2 → Norway(h)=2, Senegal(a)=1
+    ['m53', 2, 1], // sheet: France 1–Norway 2 → Norway(h)=2, France(a)=1
+    ['m54', 3, 0],
+    // Group J
+    ['m55', 3, 0], ['m56', 2, 1], ['m57', 2, 1],
+    ['m58', 0, 1], // sheet: Algeria 1–Jordan 0 → Jordan(h)=0, Algeria(a)=1
+    ['m59', 0, 3], // sheet: Argentina 3–Jordan 0 → Jordan(h)=0, Argentina(a)=3
+    ['m60', 0, 2],
+    // Group K
+    ['m61', 2, 0], ['m62', 0, 2], ['m63', 1, 1],
+    ['m64', 2, 1], // sheet: DR Congo 1–Colombia 2 → Colombia(h)=2, DRC(a)=1
+    ['m65', 1, 1], // sheet: Portugal 1–Colombia 1 → Colombia(h)=1, Portugal(a)=1
+    ['m66', 1, 1],
+    // Group L
+    ['m67', 2, 0], ['m68', 1, 1], ['m69', 3, 0],
+    ['m70', 1, 2], // sheet: Croatia 2–Panama 1 → Panama(h)=1, Croatia(a)=2
+    ['m71', 0, 2], // sheet: England 2–Panama 0 → Panama(h)=0, England(a)=2
+    ['m72', 2, 1],
+  ]
+
+  let upserted = 0
+  for (const [match_id, home_goals, away_goals] of picks) {
+    db.upsertScorePick(pdai.id, match_id, home_goals, away_goals)
+    upserted++
+  }
+
+  res.json({ success: true, username: pdai.username, upserted })
+})
+
 // ── Generate a bracket for a user from their knockout score picks ────────────
 // Processes rounds in order (R32 → R16 → QF → SF → Third → Final).
 // For each match the winner is derived from the user's score pick; ties default
