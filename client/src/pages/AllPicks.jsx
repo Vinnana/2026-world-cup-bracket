@@ -49,12 +49,28 @@ function pickBoxClass(pts) {
   if (pts === 0)  return 'bg-red-600/20 border-red-500/60'
   return 'bg-gray-800/60 border-gray-700/40'
 }
+// Knockout box: pts can be 0–20 (advance + scoreline)
+function pickBoxClassKo(pts) {
+  if (pts == null) return 'bg-gray-800/60 border-gray-700/40'
+  if (pts >= 14)  return 'bg-green-500/15 border-green-500/60'
+  if (pts >= 10)  return 'bg-yellow-400/15 border-yellow-400/70'
+  if (pts > 0)    return 'bg-blue-500/20 border-blue-500/70'
+  if (pts === 0)  return 'bg-red-600/20 border-red-500/60'
+  return 'bg-gray-800/60 border-gray-700/40'
+}
 
 // Solid, high-contrast points pill — the filled color makes each tier unmistakable.
 function ptsPill(pts) {
   if (pts === 10) return 'bg-green-500 text-green-950'
   if (pts === 6)  return 'bg-yellow-400 text-yellow-950'
   if (pts === 4)  return 'bg-blue-500 text-white'
+  return 'bg-red-600 text-white'
+}
+function ptsPillKo(pts) {
+  if (pts == null) return ''
+  if (pts >= 14) return 'bg-green-500 text-green-950'
+  if (pts >= 10) return 'bg-yellow-400 text-yellow-950'
+  if (pts > 0)   return 'bg-blue-500 text-white'
   return 'bg-red-600 text-white'
 }
 
@@ -347,8 +363,22 @@ export default function AllPicks() {
 
   const { users = [], locked, matches = [], results = {} } = data || {}
   const groupMatches = matches.filter(m => m.round === 'Group')
-  const upcomingGroupMatches  = groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null)
-  const completedGroupMatches = groupMatches.filter(m => results[m.id]?.home_goals != null)
+
+  // Knockout: only show matches where ESPN has assigned actual teams
+  const knockoutMatches = matches.filter(m => m.round !== 'Group' && results[m.id]?.home_team)
+
+  const upcomingMatches  = [
+    ...groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null),
+    ...knockoutMatches.filter(m => results[m.id].home_goals == null && !results[m.id].winner),
+  ]
+  const completedMatches = [
+    ...groupMatches.filter(m => results[m.id]?.home_goals != null),
+    ...knockoutMatches.filter(m => results[m.id].home_goals != null || results[m.id].winner),
+  ]
+
+  // Keep legacy aliases used inside the two view sections below
+  const upcomingGroupMatches  = upcomingMatches
+  const completedGroupMatches = completedMatches
 
   // ── Live scoring computation ────────────────────────────────────────────────
   // Pending: ESPN has a score but admin hasn't confirmed yet
@@ -411,7 +441,7 @@ export default function AllPicks() {
           {upcomingGroupMatches.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <p className="text-3xl mb-3">🏁</p>
-              <p className="text-sm font-medium">All group stage matches completed!</p>
+              <p className="text-sm font-medium">All matches completed!</p>
             </div>
           ) : (
             getScheduleDays(upcomingGroupMatches, matchDates).map(([dayLabel, dayMatches]) => (
@@ -427,9 +457,15 @@ export default function AllPicks() {
                   {dayMatches.map(m => {
                     const result   = results[m.id]
                     const live     = liveScores[m.id]
-                    const home     = typeof m.home === 'string' ? m.home : null
-                    const away     = typeof m.away === 'string' ? m.away : null
+                    const isKo     = m.round !== 'Group'
+                    const home     = typeof m.home === 'string' ? m.home : result?.home_team || null
+                    const away     = typeof m.away === 'string' ? m.away : result?.away_team || null
                     const resultIn = result?.home_goals != null
+                    const roundLabel = isKo
+                      ? (m.round === 'R32' ? 'R32' : m.round === 'R16' ? 'R16' :
+                         m.round === 'QF' ? 'QF' : m.round === 'SF' ? 'SF' :
+                         m.round === 'Third' ? '3rd' : 'Final')
+                      : null
                     return (
                       <div key={m.id} className="card py-2.5 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -451,7 +487,10 @@ export default function AllPicks() {
                           ) : matchDates[m.id] ? (
                             <span className="text-[10px] text-gray-500 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
                           ) : null}
-                          <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
+                          {isKo
+                            ? <span className="text-[10px] font-bold text-purple-400 bg-purple-900/30 px-1.5 py-0.5 rounded border border-purple-700/40">{roundLabel}</span>
+                            : <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
+                          }
                           <span className="text-sm font-semibold text-white flex-1">
                             {home ? <>{getFlag(home)} {home}</> : 'TBD'}
                             <span className="text-gray-500 font-normal mx-1.5">vs</span>
@@ -467,19 +506,22 @@ export default function AllPicks() {
                           {users.map(u => {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
-                            const pts = calcPts(pick, result)
-                            // Live provisional pts for in-play matches
+                            const pts = isKo
+                              ? (resultIn || result?.winner ? (u.knockout_breakdown?.[m.id]?.total ?? null) : null)
+                              : calcPts(pick, result)
+                            // Live provisional pts for in-play matches (scoreline portion only)
                             const livePts = !resultIn && live?.home_score != null && hasPick
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
                               : null
-                            const showPts = resultIn ? pts : livePts
-                            const ptsIsLive = !resultIn && livePts != null
+                            const showPts = (resultIn || result?.winner) ? pts : livePts
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (
                               <div
                                 key={u.user_id}
-                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(showPts)} ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
+                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
+                                  isKo ? pickBoxClassKo(showPts) : pickBoxClass(showPts)
+                                } ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -490,7 +532,9 @@ export default function AllPicks() {
                                       {pick.home_goals}–{pick.away_goals}
                                     </span>
                                     {showPts != null && (
-                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${ptsPill(showPts)}`}>
+                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${
+                                        isKo ? ptsPillKo(showPts) : ptsPill(showPts)
+                                      }`}>
                                         {showPts > 0 ? `+${showPts}` : '✗'}
                                       </span>
                                     )}
@@ -533,17 +577,25 @@ export default function AllPicks() {
                 <div className="space-y-3">
                   {dayMatches.map(m => {
                     const result = results[m.id]
-                    const home = typeof m.home === 'string' ? m.home : null
-                    const away = typeof m.away === 'string' ? m.away : null
+                    const isKo   = m.round !== 'Group'
+                    const home   = typeof m.home === 'string' ? m.home : result?.home_team || null
+                    const away   = typeof m.away === 'string' ? m.away : result?.away_team || null
                     const resultIn = result?.home_goals != null
+                    const roundLabel = isKo
+                      ? (m.round === 'R32' ? 'R32' : m.round === 'R16' ? 'R16' :
+                         m.round === 'QF' ? 'QF' : m.round === 'SF' ? 'SF' :
+                         m.round === 'Third' ? '3rd' : 'Final')
+                      : null
                     return (
                       <div key={m.id} className="card py-2.5 space-y-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {/* Match date label */}
                           {matchDates[m.id] ? (
                             <span className="text-[10px] text-gray-600 tabular-nums">{fmtMatchTime(matchDates[m.id])}</span>
                           ) : null}
-                          <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
+                          {isKo
+                            ? <span className="text-[10px] font-bold text-purple-400 bg-purple-900/30 px-1.5 py-0.5 rounded border border-purple-700/40">{roundLabel}</span>
+                            : <span className="text-[10px] font-bold text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded">Grp {m.group}</span>
+                          }
                           <span className="text-sm font-semibold text-white flex-1">
                             {home ? <>{getFlag(home)} {home}</> : 'TBD'}
                             <span className="text-gray-500 font-normal mx-1.5">vs</span>
@@ -554,18 +606,27 @@ export default function AllPicks() {
                               FT {result.home_goals}–{result.away_goals}
                             </span>
                           )}
+                          {!resultIn && result?.winner && (
+                            <span className="text-xs font-bold text-white bg-gray-700 px-2 py-0.5 rounded">
+                              W: {result.winner}
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {users.map(u => {
                             const pick = u.picks[m.id]
                             const hasPick = pick?.home_goals != null
-                            const pts = calcPts(pick, result)
+                            const pts = isKo
+                              ? (u.knockout_breakdown?.[m.id]?.total ?? null)
+                              : calcPts(pick, result)
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (
                               <div
                                 key={u.user_id}
-                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${pickBoxClass(pts)} ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
+                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
+                                  isKo ? pickBoxClassKo(pts) : pickBoxClass(pts)
+                                } ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -575,8 +636,10 @@ export default function AllPicks() {
                                     <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
                                       {pick.home_goals}–{pick.away_goals}
                                     </span>
-                                    {pts != null && resultIn && (
-                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${ptsPill(pts)}`}>
+                                    {pts != null && (
+                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${
+                                        isKo ? ptsPillKo(pts) : ptsPill(pts)
+                                      }`}>
                                         {pts > 0 ? `+${pts}` : '✗'}
                                       </span>
                                     )}
