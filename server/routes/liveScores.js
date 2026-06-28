@@ -17,6 +17,10 @@
 
 import { Router } from 'express'
 import { ALL_MATCHES } from '../matches.js'
+import { KNOCKOUT } from '../teams.js'
+import db from '../database.js'
+
+const KNOCKOUT_IDS = new Set(KNOCKOUT.flatMap(r => r.matches.map(m => m.id)))
 
 const router = Router()
 
@@ -59,13 +63,24 @@ function findMatchByTeams(espnHome, espnAway) {
     if (typeof m.home !== 'string' || typeof m.away !== 'string') return false
     return m.home.toLowerCase() === nh && m.away.toLowerCase() === na
   })
-  if (exact) return { match: exact, swapped: false }
+  if (exact) return { matchId: exact.id, swapped: false }
 
   const reversed = ALL_MATCHES.find(m => {
     if (typeof m.home !== 'string' || typeof m.away !== 'string') return false
     return m.home.toLowerCase() === na && m.away.toLowerCase() === nh
   })
-  if (reversed) return { match: reversed, swapped: true }
+  if (reversed) return { matchId: reversed.id, swapped: true }
+
+  // Fallback: match knockout matches by the actual teams stored in match_scores
+  // (knockout m.home/m.away are slot codes, not real team names)
+  const allScores = db.getAllMatchScores()
+  for (const s of allScores) {
+    if (!KNOCKOUT_IDS.has(s.match_id) || !s.home_team || !s.away_team) continue
+    const mh = normalizeTeam(s.home_team)
+    const ma = normalizeTeam(s.away_team)
+    if (mh === nh && ma === na) return { matchId: s.match_id, swapped: false }
+    if (mh === na && ma === nh) return { matchId: s.match_id, swapped: true }
+  }
 
   return null
 }
@@ -107,7 +122,7 @@ async function fetchLiveScores() {
 
         const found = findMatchByTeams(homeC.team?.displayName, awayC.team?.displayName)
         if (!found) continue
-        const { match, swapped } = found
+        const { matchId, swapped } = found
 
         // Derive a clean status string
         let status = 'live'
@@ -118,7 +133,7 @@ async function fetchLiveScores() {
         const espnAway = parseInt(awayC.score) || 0
 
         // If ESPN had the teams in the opposite order to our schedule, swap the scores
-        scores[match.id] = {
+        scores[matchId] = {
           status,
           status_name: statusName,
           home_score: swapped ? espnAway : espnHome,
