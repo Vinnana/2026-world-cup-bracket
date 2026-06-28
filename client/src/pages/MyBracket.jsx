@@ -51,9 +51,17 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
   const [dirty,   setDirty]   = useState(false)
   const [flash,   setFlash]   = useState(false)
 
+  // Refs so handleBlur always sees the latest typed values (state lags one render)
+  const homeValRef = useRef(String(scorePick?.home_goals ?? ''))
+  const awayValRef = useRef(String(scorePick?.away_goals ?? ''))
+
   useEffect(() => {
-    setHomeVal(scorePick?.home_goals ?? '')
-    setAwayVal(scorePick?.away_goals ?? '')
+    const hv = String(scorePick?.home_goals ?? '')
+    const av = String(scorePick?.away_goals ?? '')
+    setHomeVal(hv)
+    setAwayVal(av)
+    homeValRef.current = hv
+    awayValRef.current = av
     setDirty(false)
   }, [scorePick?.home_goals, scorePick?.away_goals])
 
@@ -83,12 +91,26 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
     const clean = val.replace(/[^0-9]/g, '').slice(0, 2)
     if (side === 'home') {
       setHomeVal(clean)
-      setDirty(true)
-      if (clean.length >= 1) { awayRef.current?.focus(); awayRef.current?.select() }
+      homeValRef.current = clean
+      if (clean.length >= 1) {
+        // If away is already filled, advance immediately without waiting for blur
+        if (awayValRef.current !== '') {
+          const hg = parseInt(clean), ag = parseInt(awayValRef.current)
+          if (!isNaN(hg) && !isNaN(ag)) doSave(hg, ag)
+          else setDirty(true)
+        } else {
+          setDirty(true)
+        }
+        awayRef.current?.focus()
+        awayRef.current?.select()
+      } else {
+        setDirty(true)
+      }
     } else {
       setAwayVal(clean)
-      if (clean.length >= 1 && homeVal !== '') {
-        const hg = parseInt(homeVal), ag = parseInt(clean)
+      awayValRef.current = clean
+      if (clean.length >= 1 && homeValRef.current !== '') {
+        const hg = parseInt(homeValRef.current), ag = parseInt(clean)
         if (!isNaN(hg) && !isNaN(ag)) doSave(hg, ag)
       } else {
         setDirty(true)
@@ -98,13 +120,15 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
 
   function handleBlur() {
     if (locked) return
+    const hv = homeValRef.current
+    const av = awayValRef.current
     // Both inputs cleared while a pick existed → signal deletion
-    if (homeVal === '' && awayVal === '' && scorePick?.home_goals != null) {
+    if (hv === '' && av === '' && scorePick?.home_goals != null) {
       onClearScore(match.id)
       return
     }
-    if (!dirty || homeVal === '' || awayVal === '') return
-    const hg = parseInt(homeVal), ag = parseInt(awayVal)
+    if (!dirty || hv === '' || av === '') return
+    const hg = parseInt(hv), ag = parseInt(av)
     if (isNaN(hg) || isNaN(ag)) return
     doSave(hg, ag)
   }
