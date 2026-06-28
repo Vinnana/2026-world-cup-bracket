@@ -239,51 +239,86 @@ function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, has
             )
           })}
 
-          {/* Knockout picks */}
+          {/* Knockout picks — show scoreline pick + who they advanced */}
           {koRounds.map(round => {
             const rMatches = allMatches.filter(m => m.round === round)
-            if (!rMatches.length) return null
-            const hasPicks = rMatches.some(m => userData.picks[m.id]?.home_goals != null)
-            if (!hasPicks) return null
+            // Only show matches where ESPN has assigned actual teams
+            const knownMatches = rMatches.filter(m => results[m.id]?.home_team)
+            if (!knownMatches.length) return null
+            const hasAny = knownMatches.some(m =>
+              userData.picks[m.id]?.home_goals != null || userData.bracket_picks?.[m.id]
+            )
+            if (!hasAny) return null
 
             return (
               <div key={round}>
-                <div className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
-                  {round === 'R32' ? 'Round of 32' : round === 'R16' ? 'Round of 16' :
-                   round === 'QF' ? 'Quarter-finals' : round === 'SF' ? 'Semi-finals' : 'Final'}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs font-bold text-purple-400 uppercase tracking-wide">
+                    {round === 'R32' ? 'Round of 32' : round === 'R16' ? 'Round of 16' :
+                     round === 'QF' ? 'Quarter-finals' : round === 'SF' ? 'Semi-finals' : 'Final'}
+                  </span>
                 </div>
                 <div className="space-y-1">
-                  {rMatches.map(m => {
-                    const pick = userData.picks[m.id]
-                    if (!pick?.home_goals == null) return null
-                    const result = results[m.id]
-                    const pts = calcPts(pick, result)
+                  {knownMatches.map(m => {
+                    const pick        = userData.picks[m.id]
+                    const advancePick = userData.bracket_picks?.[m.id]
+                    const result      = results[m.id]
+                    const homeTeam    = result?.home_team
+                    const awayTeam    = result?.away_team
+                    const actualWinner = result?.winner
+                    const koPts       = userData.knockout_breakdown?.[m.id]
+                    const totalPts    = koPts?.total ?? null
+                    const resultIn    = result?.home_goals != null
+
+                    const rowBg = totalPts == null ? 'bg-gray-800/40'
+                      : totalPts >= 14 ? 'bg-green-900/20'
+                      : totalPts >= 10 ? 'bg-yellow-900/20'
+                      : totalPts > 0   ? 'bg-blue-900/20'
+                      : 'bg-red-900/10'
 
                     return (
-                      <div key={m.id}
-                        className={`flex items-center gap-2 px-2 py-1 rounded text-xs ${
-                          pts === 10 ? 'bg-green-900/20' : pts === 6 ? 'bg-yellow-900/20' :
-                          pts === 4 ? 'bg-orange-900/20' : pts === 0 ? 'bg-red-900/10' : 'bg-gray-800/40'
-                        }`}
-                      >
-                        <span className="text-gray-600 w-6 tabular-nums">{m.no}</span>
-                        <span className="text-gray-400 flex-1 text-xs">Match {m.id}</span>
-                        {pick?.home_goals != null ? (
-                          <span className="font-bold tabular-nums text-gray-200">
-                            {pick.home_goals}–{pick.away_goals}
+                      <div key={m.id} className={`px-2 py-1.5 rounded text-xs ${rowBg}`}>
+                        {/* Line 1: teams + score pick + result */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-600 w-5 tabular-nums shrink-0">{m.no}</span>
+                          <span className="text-gray-300 flex-1 text-right truncate">
+                            {homeTeam ? <>{getFlag(homeTeam)} {homeTeam}</> : '—'}
                           </span>
-                        ) : (
-                          <span className="text-gray-600">–</span>
-                        )}
-                        {result?.home_goals != null && (
-                          <span className="text-gray-500 tabular-nums ml-1">
-                            ({result.home_goals}–{result.away_goals})
+                          {pick?.home_goals != null ? (
+                            <span className="font-bold tabular-nums text-gray-200 w-10 text-center shrink-0">
+                              {pick.home_goals}–{pick.away_goals}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600 w-10 text-center shrink-0">–</span>
+                          )}
+                          <span className="text-gray-300 flex-1 truncate">
+                            {awayTeam ? <>{getFlag(awayTeam)} {awayTeam}</> : '—'}
                           </span>
-                        )}
-                        {pts != null && (
-                          <span className={`font-bold ml-1 ${pts > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                            {pts > 0 ? `+${pts}` : '✗'}
-                          </span>
+                          {resultIn && (
+                            <span className="text-gray-500 w-10 text-right tabular-nums shrink-0">
+                              {result.home_goals}–{result.away_goals}
+                            </span>
+                          )}
+                          {totalPts != null && (
+                            <span className={`w-7 text-right font-bold shrink-0 ${totalPts > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {totalPts > 0 ? `+${totalPts}` : '✗'}
+                            </span>
+                          )}
+                        </div>
+                        {/* Line 2: advancement pick */}
+                        {advancePick && (
+                          <div className="flex items-center gap-1 mt-0.5 pl-7">
+                            <span className="text-gray-600 text-[10px]">advances:</span>
+                            <span className={`text-[10px] font-semibold ${
+                              actualWinner == null ? 'text-gray-400'
+                              : actualWinner === advancePick ? 'text-green-400'
+                              : 'text-red-400'
+                            }`}>
+                              {getFlag(advancePick)} {advancePick}
+                              {actualWinner === advancePick && ' ✓'}
+                              {actualWinner && actualWinner !== advancePick && ' ✗'}
+                            </span>
+                          </div>
                         )}
                       </div>
                     )

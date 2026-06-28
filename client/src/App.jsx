@@ -10,6 +10,7 @@ import ScorePicks from './pages/ScorePicks'
 import MyBracket from './pages/MyBracket'
 import AllPicks from './pages/AllPicks'
 import Leaderboard from './pages/Leaderboard'
+import OverallLeaderboard from './pages/OverallLeaderboard'
 import FAQ from './pages/FAQ'
 import Admin from './pages/Admin'
 
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/bracket"        element={<ProtectedRoute><MyBracket /></ProtectedRoute>} />
         <Route path="/all"            element={<ProtectedRoute><AllPicks /></ProtectedRoute>} />
         <Route path="/leaderboard"    element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+        <Route path="/overall"        element={<ProtectedRoute><OverallLeaderboard /></ProtectedRoute>} />
         <Route path="/faq"            element={<ProtectedRoute><FAQ /></ProtectedRoute>} />
         <Route path="/admin"          element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
         <Route path="*"               element={<Navigate to={user ? '/picks' : '/login'} replace />} />

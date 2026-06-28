@@ -387,6 +387,18 @@ router.get('/all', optionalAuth, (req, res) => {
   const resultMap = {}
   for (const s of allScores) resultMap[s.match_id] = s
 
+  // Bracket advancement picks: user_id → { [match_id]: teamName }
+  const bracketPicksMap = {}
+  for (const u of players) {
+    const b = db.getBracketByUserId(u.id)
+    if (b) {
+      try {
+        const parsed = typeof b.picks === 'string' ? JSON.parse(b.picks) : b.picks
+        if (parsed?.knockout) bracketPicksMap[u.id] = parsed.knockout
+      } catch {}
+    }
+  }
+
   const byUser = players
     .map(u => {
       const userPicks = allPicks.filter(p => p.user_id === u.id)
@@ -400,6 +412,7 @@ router.get('/all', optionalAuth, (req, res) => {
         user_id: u.id,
         username: u.username,
         picks: pickMap,
+        bracket_picks: bracketPicksMap[u.id] || {},  // { [match_id]: teamName } for knockout
         group_total,
         knockout_total,
         total: group_total + knockout_total,
