@@ -51,20 +51,41 @@ export default function OverallLeaderboard() {
         setData(lbRes.data)
         setEspnScores(liveRes.data?.scores || {})
 
-        // Build champion map from bracket knockout picks (m104 = Final winner)
+        // Build initial champion map from bracket advance picks (m104)
+        const cm = {}
         if (bracketRes?.data?.brackets) {
-          const cm = {}
           for (const b of bracketRes.data.brackets) {
             const champ = b.picks?.knockout?.m104
             if (champ) cm[b.user_id] = champ
           }
-          setChampionMap(cm)
         }
+        setChampionMap(cm)
 
         if (lbRes.data?.locked) {
           const allRes = await picksApi.all().catch(() => null)
           if (!cancelled && allRes?.data && !allRes.data.hidden) {
             setAllPicksData(allRes.data)
+
+            // Refine champion map using score picks for m104, exactly matching
+            // AllBrackets' KoCard clearWinner logic:
+            //   non-draw score → winner derived from score + SF picks
+            //   draw or no score → advance pick (m104) used directly
+            const cm2 = {}
+            for (const u of allRes.data.users || []) {
+              const scorePick  = u.picks?.['m104']
+              const sf1Winner  = u.bracket_picks?.['m101']  // home team of Final
+              const sf2Winner  = u.bracket_picks?.['m102']  // away team of Final
+              const advPick    = u.bracket_picks?.['m104']
+              let champ        = advPick || null
+              if (scorePick?.home_goals != null && scorePick?.away_goals != null) {
+                const hg = Number(scorePick.home_goals), ag = Number(scorePick.away_goals)
+                if (hg > ag && sf1Winner) champ = sf1Winner
+                else if (ag > hg && sf2Winner) champ = sf2Winner
+                // draw → keep advPick
+              }
+              if (champ) cm2[u.user_id] = champ
+            }
+            setChampionMap(cm2)
           }
         }
       } catch (err) {
