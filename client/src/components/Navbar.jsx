@@ -125,7 +125,6 @@ export default function Navbar() {
               >
                 🏆 Overall LB
               </Link>
-              <ThemeToggle />
               <button
                 onClick={() => setOpen(v => !v)}
                 className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
@@ -181,12 +180,15 @@ export default function Navbar() {
               <span>⚙️</span>
               <span>Account</span>
             </Link>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-gray-500 hover:text-white px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              Sign out
-            </button>
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-500 hover:text-white px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       )}
