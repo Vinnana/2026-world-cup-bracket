@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { picks as picksApi, liveScores as liveScoresApi } from '../api'
+import { picks as picksApi, liveScores as liveScoresApi, brackets as bracketsApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getRealName } from '../utils/nicknames'
-import { getFlag } from '../utils/flags'
+import { getFlag, getCode } from '../utils/flags'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 const displayName = (u) => u.replace(/@.+$/, '')
@@ -34,6 +34,7 @@ export default function OverallLeaderboard() {
   const [data,         setData]         = useState(null)
   const [allPicksData, setAllPicksData] = useState(null)
   const [espnScores,   setEspnScores]   = useState({})
+  const [championMap,  setChampionMap]  = useState({})   // user_id → champion team name
   const [loading,      setLoading]      = useState(true)
 
   useEffect(() => {
@@ -41,13 +42,24 @@ export default function OverallLeaderboard() {
 
     async function load() {
       try {
-        const [lbRes, liveRes] = await Promise.all([
+        const [lbRes, liveRes, bracketRes] = await Promise.all([
           picksApi.leaderboard(),
           liveScoresApi.get().catch(() => ({ data: { scores: {} } })),
+          bracketsApi.all().catch(() => null),
         ])
         if (cancelled) return
         setData(lbRes.data)
         setEspnScores(liveRes.data?.scores || {})
+
+        // Build champion map from bracket knockout picks (m104 = Final winner)
+        if (bracketRes?.data?.brackets) {
+          const cm = {}
+          for (const b of bracketRes.data.brackets) {
+            const champ = b.picks?.knockout?.m104
+            if (champ) cm[b.user_id] = champ
+          }
+          setChampionMap(cm)
+        }
 
         if (lbRes.data?.locked) {
           const allRes = await picksApi.all().catch(() => null)
@@ -206,16 +218,27 @@ export default function OverallLeaderboard() {
                 {submittedAlpha.map(entry => {
                   const isMe = entry.user_id === user?.id
                   const realName = getRealName(entry.username)
+                  const champion = championMap[entry.user_id] ?? null
                   return (
-                    <div key={entry.user_id} className="flex items-center justify-between py-2.5">
-                      <span className={`font-medium ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
+                    <div key={entry.user_id} className="flex items-center justify-between py-2.5 gap-2">
+                      <span className={`font-medium min-w-0 truncate ${isMe ? 'text-fifa-gold' : 'text-white'}`}>
                         {displayName(entry.username)}
                         {isMe
                           ? <span className="ml-1 text-xs text-gray-500">(you)</span>
                           : realName && <span className="ml-1 text-xs text-gray-500 font-normal">({realName})</span>
                         }
                       </span>
-                      <span className="text-xs text-green-400">✓ {entry.picks_count} picks</span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {champion ? (
+                          <span className="flex items-center gap-1" title={champion}>
+                            <span className="text-base leading-none">{getFlag(champion)}</span>
+                            <span className="text-[10px] font-bold tracking-wide text-gray-400">{getCode(champion)}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-700">—</span>
+                        )}
+                        <span className="text-xs text-green-400">✓ {entry.picks_count} picks</span>
+                      </div>
                     </div>
                   )
                 })}
@@ -262,6 +285,8 @@ export default function OverallLeaderboard() {
             const bonus        = entry.liveBonus || 0
             const liveBreakdown = liveBreakdownMap[entry.user_id] || []
 
+            const champion = championMap[entry.user_id] ?? null
+
             return (
               <div key={entry.user_id} className={`py-3 px-1 ${isMe ? 'text-fifa-gold' : ''}`}>
                 <div className="flex items-center justify-between gap-2">
@@ -299,6 +324,18 @@ export default function OverallLeaderboard() {
                       </div>
                       <span className="text-xs text-gray-600">{entry.picks_count} picks</span>
                     </div>
+                  </div>
+
+                  {/* Middle: champion pick */}
+                  <div className="shrink-0 flex flex-col items-center gap-0.5" title={champion ? `Picked: ${champion}` : 'No champion pick'}>
+                    {champion ? (
+                      <>
+                        <span className="text-lg leading-none">{getFlag(champion)}</span>
+                        <span className="text-[9px] font-bold tracking-wide text-gray-400 tabular-nums">{getCode(champion)}</span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-700">—</span>
+                    )}
                   </div>
 
                   {/* Right: score + group sub-score + win% */}
