@@ -54,7 +54,7 @@ function pickBoxClassKo(pts, hasAdvancePick) {
   if (pts == null) return 'bg-gray-800/60 border-gray-700/40'
   if (pts >= 20)  return 'bg-green-700/45 border-green-500'
   if (pts >= 16)  return 'bg-amber-600/45 border-amber-400'
-  if (pts >= 14)  return 'bg-orange-700/45 border-orange-500'
+  if (pts >= 14)  return 'bg-pink-500/25 border-pink-400'
   if (pts >= 10)  return 'bg-blue-700/45 border-blue-500'
   return 'bg-red-900/80 border-red-600'
 }
@@ -70,7 +70,7 @@ function ptsPillKo(pts) {
   if (pts == null) return ''
   if (pts >= 20) return 'bg-green-500 text-green-950'
   if (pts >= 16) return 'bg-amber-500 text-amber-950'
-  if (pts >= 14) return 'bg-orange-500 text-orange-950'
+  if (pts >= 14) return 'bg-pink-400 text-white'
   if (pts >= 10) return 'bg-blue-500 text-white'
   return 'bg-red-600 text-white'
 }
@@ -736,7 +736,7 @@ export default function AllPicks() {
                                             <span className={`text-[8px] font-black tabular-nums ${
                                               tot >= 20 ? 'text-green-300'
                                               : tot >= 16 ? 'text-amber-300'
-                                              : tot >= 14 ? 'text-orange-300'
+                                              : tot >= 14 ? 'text-pink-300'
                                               : tot >= 10 ? 'text-blue-300'
                                               : 'text-gray-300'
                                             }`}>={tot}</span>

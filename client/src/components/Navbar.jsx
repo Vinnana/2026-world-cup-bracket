@@ -108,26 +108,32 @@ export default function Navbar() {
             </div>
 
             {/* Mobile: pinned links + hamburger */}
-            <div className="md:hidden flex items-center gap-1">
-              <Link
-                to="/all"
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  isActive('/all') ? 'bg-fifa-gold text-gray-950' : 'text-gray-300 hover:text-white hover:bg-gray-800'
-                }`}
-              >
-                All Picks
-              </Link>
-              <Link
-                to="/overall"
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  isActive('/overall') ? 'bg-fifa-gold text-gray-950' : 'text-gray-300 hover:text-white hover:bg-gray-800'
-                }`}
-              >
-                🏆 Overall LB
-              </Link>
+            <div className="md:hidden flex items-center gap-2">
+              {/* Two-row block: links on top, theme toggle below */}
+              <div className="flex flex-col gap-0.5 items-end">
+                <div className="flex items-center gap-1">
+                  <Link
+                    to="/all"
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      isActive('/all') ? 'bg-fifa-gold text-gray-950' : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                    }`}
+                  >
+                    All Picks
+                  </Link>
+                  <Link
+                    to="/overall"
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      isActive('/overall') ? 'bg-fifa-gold text-gray-950' : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                    }`}
+                  >
+                    🏆 Overall LB
+                  </Link>
+                </div>
+                <ThemeToggle className="self-end" />
+              </div>
               <button
                 onClick={() => setOpen(v => !v)}
-                className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+                className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors flex-shrink-0"
                 aria-label={open ? 'Close menu' : 'Open menu'}
               >
                 {open ? (
@@ -180,15 +186,12 @@ export default function Navbar() {
               <span>⚙️</span>
               <span>Account</span>
             </Link>
-            <div className="flex items-center gap-1">
-              <ThemeToggle />
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-500 hover:text-white px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-              >
-                Sign out
-              </button>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-gray-500 hover:text-white px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       )}

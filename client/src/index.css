@@ -154,3 +154,18 @@ html[data-theme="light"] .bg-yellow-400     { color: #451a03 !important; }
 /* ── Score pick tile backgrounds in light mode ── */
 html[data-theme="light"] .bg-gray-800\/60 { background-color: rgba(248,250,252,0.85) !important; }
 html[data-theme="light"] .border-gray-700\/40 { border-color: rgba(203,213,225,0.6) !important; }
+
+/* ── Navbar stays dark in light mode — restore legible text inside it ──
+   Specificity: html[attr] element class (0,2,1) beats html[attr] class (0,2,0) */
+html[data-theme="light"] nav .text-white         { color: #ffffff !important; }
+html[data-theme="light"] nav .text-gray-100      { color: #f3f4f6 !important; }
+html[data-theme="light"] nav .text-gray-200      { color: #e5e7eb !important; }
+html[data-theme="light"] nav .text-gray-300      { color: #d1d5db !important; }
+html[data-theme="light"] nav .text-gray-400      { color: #9ca3af !important; }
+html[data-theme="light"] nav .text-gray-500      { color: #6b7280 !important; }
+html[data-theme="light"] nav .hover\:text-white:hover { color: #ffffff !important; }
+html[data-theme="light"] nav .border-gray-800    { border-color: rgba(255,255,255,0.1) !important; }
+html[data-theme="light"] nav .hover\:bg-gray-800:hover { background-color: rgba(255,255,255,0.1) !important; }
+html[data-theme="light"] nav .hover\:bg-gray-700:hover { background-color: rgba(255,255,255,0.15) !important; }
+html[data-theme="light"] nav .bg-gray-800        { background-color: rgba(255,255,255,0.08) !important; }
+html[data-theme="light"] nav .bg-gray-700        { background-color: rgba(255,255,255,0.12) !important; }
