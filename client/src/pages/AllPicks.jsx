@@ -562,7 +562,7 @@ export default function AllPicks() {
                               <div
                                 key={u.user_id}
                                 className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  isKo ? pickBoxClassKo(showPts, hasAdvancePick) : pickBoxClass(showPts, hasPick)
+                                  pickBoxClass(showPts, hasPick || hasAdvancePick)
                                 } ${isMePick ? 'z-10 ring-[3px] ring-white shadow-[0_0_0_5px_rgba(201,162,39,0.7),0_0_16px_rgba(201,162,39,0.5)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
@@ -575,7 +575,7 @@ export default function AllPicks() {
                                     </span>
                                     {showPts != null && (
                                       <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${
-                                        isKo ? ptsPillKo(showPts) : ptsPill(showPts)
+                                        ptsPill(showPts)
                                       }`}>
                                         {showPts > 0 ? `+${showPts}` : '✗'}
                                       </span>
