@@ -114,6 +114,7 @@ router.get('/', optionalAuth, (req, res) => {
     return {
       user_id: user.id,
       username: user.username,
+      is_admin: !!user.is_admin,
       picks: canSeePicks ? (picks || {}) : {},
       hidden: !canSeePicks && !!row,
       score,

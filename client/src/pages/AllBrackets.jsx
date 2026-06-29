@@ -26,7 +26,7 @@ export default function AllBrackets() {
         picksApi.matches(),
       ])
       setKnockout(tourney.data.knockout || [])
-      setAllBrackets(all.data.brackets || [])
+      setAllBrackets((all.data.brackets || []).filter(b => !b.is_admin))
       setResults(res.data || { groups: {}, knockout: {} })
       setMatchResults(matchRes.data.results || {})
       setTeamOverrides(matchRes.data.team_overrides || {})
