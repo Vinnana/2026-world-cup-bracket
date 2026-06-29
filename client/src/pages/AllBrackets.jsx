@@ -123,16 +123,13 @@ export default function AllBrackets() {
             <button
               key={b.user_id}
               onClick={() => setSelected(b.user_id)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 selected === b.user_id
                   ? 'bg-fifa-gold text-gray-950'
                   : 'bg-gray-800 text-gray-200 hover:bg-gray-700'
               }`}
             >
               {displayName(b.username)}
-              <span className={`text-xs tabular-nums ${selected === b.user_id ? 'opacity-60' : 'text-gray-500'}`}>
-                {b.score} pts
-              </span>
             </button>
           ))}
           {noPicks.filter(matchesFn).map(b => (
@@ -154,9 +151,6 @@ export default function AllBrackets() {
         <div className="card p-0 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-800 flex items-center gap-3 flex-wrap">
             <span className="font-semibold text-white">{displayName(viewing.username)}'s Bracket</span>
-            <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full tabular-nums">
-              {viewing.score} pts
-            </span>
             {!allPicksData && (
               <span className="text-xs text-gray-500 italic ml-auto">Score picks hidden until locked</span>
             )}
