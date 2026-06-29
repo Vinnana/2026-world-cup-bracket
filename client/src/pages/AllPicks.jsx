@@ -544,14 +544,18 @@ export default function AllPicks() {
                             const hasPick = pick?.home_goals != null
                             const advancePick = isKo ? (u.bracket_picks?.[m.id] ?? null) : null
                             const hasAdvancePick = isKo ? !!advancePick : false
-                            const advanceWrong = isKo && hasAdvancePick && !!result?.winner && advancePick !== result.winner
+                            const effectiveWinner = result?.winner ||
+                              (resultIn && result.home_goals !== result.away_goals && result.home_team && result.away_team
+                                ? (result.home_goals > result.away_goals ? result.home_team : result.away_team)
+                                : null)
+                            const advanceWrong = isKo && hasAdvancePick && !!effectiveWinner && advancePick !== effectiveWinner
                             const pts = isKo
-                              ? (resultIn || result?.winner ? (u.knockout_breakdown?.[m.id]?.total ?? (advanceWrong ? 0 : null)) : null)
+                              ? (resultIn || effectiveWinner ? (u.knockout_breakdown?.[m.id]?.total ?? (advanceWrong ? 0 : null)) : null)
                               : calcPts(pick, result)
                             const livePts = !resultIn && live?.home_score != null && hasPick
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
                               : null
-                            const showPts = (resultIn || result?.winner) ? pts : livePts
+                            const showPts = (resultIn || effectiveWinner) ? pts : livePts
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (
@@ -559,7 +563,7 @@ export default function AllPicks() {
                                 key={u.user_id}
                                 className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
                                   isKo ? pickBoxClassKo(showPts, hasAdvancePick) : pickBoxClass(showPts, hasPick)
-                                } ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
+                                } ${isMePick ? 'z-10 ring-[3px] ring-white shadow-[0_0_0_5px_rgba(201,162,39,0.7),0_0_16px_rgba(201,162,39,0.5)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -581,9 +585,8 @@ export default function AllPicks() {
                                   <span className="text-gray-400 text-[9px]">—</span>
                                 )}
                                 {isKo && advancePick && (() => {
-                                  const actual = result?.winner
-                                  const cls = actual == null ? 'text-gray-500'
-                                    : actual === advancePick ? 'text-green-400'
+                                  const cls = effectiveWinner == null ? 'text-gray-500'
+                                    : effectiveWinner === advancePick ? 'text-green-400'
                                     : 'text-red-400'
                                   return (
                                     <span className={`text-[8px] truncate max-w-[4.5rem] ${cls}`}>
@@ -668,7 +671,11 @@ export default function AllPicks() {
                             const koPtsObj = isKo ? (u.knockout_breakdown?.[m.id] ?? null) : null
                             const advancePick = isKo ? (u.bracket_picks?.[m.id] ?? null) : null
                             const hasAdvancePick = isKo ? !!advancePick : false
-                            const advanceWrong = isKo && hasAdvancePick && !!result?.winner && advancePick !== result.winner
+                            const effectiveWinner = result?.winner ||
+                              (resultIn && result.home_goals !== result.away_goals && result.home_team && result.away_team
+                                ? (result.home_goals > result.away_goals ? result.home_team : result.away_team)
+                                : null)
+                            const advanceWrong = isKo && hasAdvancePick && !!effectiveWinner && advancePick !== effectiveWinner
                             const pts = isKo ? (koPtsObj?.total ?? (advanceWrong ? 0 : null)) : calcPts(pick, result)
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
@@ -677,7 +684,7 @@ export default function AllPicks() {
                                 key={u.user_id}
                                 className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
                                   isKo ? pickBoxClassKo(pts, hasAdvancePick) : pickBoxClass(pts, hasPick)
-                                } ${isMePick ? 'z-10 ring-2 ring-fifa-gold shadow-[0_0_9px_rgba(201,162,39,0.65)]' : ''}`}
+                                } ${isMePick ? 'z-10 ring-[3px] ring-white shadow-[0_0_0_5px_rgba(201,162,39,0.7),0_0_16px_rgba(201,162,39,0.5)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4.5rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
@@ -695,12 +702,12 @@ export default function AllPicks() {
                                     {/* Advance pick */}
                                     {advancePick ? (
                                       <span className={`text-[8px] truncate max-w-[4.5rem] leading-tight ${
-                                        result?.winner == null ? 'text-gray-500'
-                                        : result.winner === advancePick ? 'text-green-400'
+                                        effectiveWinner == null ? 'text-gray-500'
+                                        : effectiveWinner === advancePick ? 'text-green-400'
                                         : 'text-red-400'
                                       }`}>
                                         →{getFlag(advancePick)} {advancePick}
-                                        {result?.winner === advancePick ? ' ✓' : result?.winner ? ' ✗' : ''}
+                                        {effectiveWinner === advancePick ? ' ✓' : effectiveWinner ? ' ✗' : ''}
                                       </span>
                                     ) : (
                                       <span className="text-gray-400 text-[8px]">—</span>
