@@ -225,6 +225,35 @@ export default function OverallLeaderboard() {
         </div>
       )}
 
+      {/* Champion picks tally banner */}
+      {Object.keys(championMap).length > 0 && (() => {
+        const tally = Object.values(championMap).reduce((acc, team) => {
+          acc[team] = (acc[team] || 0) + 1
+          return acc
+        }, {})
+        const sorted = Object.entries(tally).sort(([, a], [, b]) => b - a)
+        return (
+          <div className="mb-4 bg-gray-800/50 border border-gray-700/50 rounded-xl px-3.5 py-2.5">
+            <p className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold mb-2">🏆 Champion picks</p>
+            <div className="flex flex-wrap gap-1.5">
+              {sorted.map(([team, count]) => (
+                <div
+                  key={team}
+                  title={team}
+                  className="flex items-center gap-1.5 bg-gray-900 border border-gray-700/70 rounded-lg px-2.5 py-1.5"
+                >
+                  <span className="text-lg leading-none">{getFlag(team)}</span>
+                  <div className="flex flex-col leading-none">
+                    <span className="text-[9px] font-bold text-gray-400 tracking-wide">{getCode(team)}</span>
+                    <span className="text-sm font-black text-white tabular-nums">{count}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {!locked ? (
         /* Picks still open */
         <div className="space-y-4 mb-6">
