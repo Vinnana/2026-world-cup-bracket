@@ -34,18 +34,20 @@ export default function OverallLeaderboard() {
   const [data,         setData]         = useState(null)
   const [allPicksData, setAllPicksData] = useState(null)
   const [espnScores,   setEspnScores]   = useState({})
-  const [championMap,  setChampionMap]  = useState({})   // user_id → champion team name
-  const [loading,      setLoading]      = useState(true)
+  const [championMap,    setChampionMap]    = useState({})   // user_id → champion team name
+  const [eliminatedTeams,setEliminatedTeams] = useState(new Set())
+  const [loading,        setLoading]        = useState(true)
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const [lbRes, liveRes, bracketRes] = await Promise.all([
+        const [lbRes, liveRes, bracketRes, bracketResultsRes] = await Promise.all([
           picksApi.leaderboard(),
           liveScoresApi.get().catch(() => ({ data: { scores: {} } })),
           bracketsApi.all().catch(() => null),
+          bracketsApi.results().catch(() => null),
         ])
         if (cancelled) return
         setData(lbRes.data)
@@ -60,6 +62,18 @@ export default function OverallLeaderboard() {
           }
         }
         setChampionMap(cm)
+
+        // Build eliminated-teams set from completed knockout results
+        if (bracketResultsRes?.data?.knockout) {
+          const elim = new Set()
+          for (const r of Object.values(bracketResultsRes.data.knockout)) {
+            if (r.winner && r.home_team && r.away_team) {
+              if (r.winner !== r.home_team) elim.add(r.home_team)
+              if (r.winner !== r.away_team) elim.add(r.away_team)
+            }
+          }
+          setEliminatedTeams(elim)
+        }
 
         if (lbRes.data?.locked) {
           const allRes = await picksApi.all().catch(() => null)
@@ -236,19 +250,26 @@ export default function OverallLeaderboard() {
           <div className="mb-4 bg-gray-800/50 border border-gray-700/50 rounded-xl px-3.5 py-2.5">
             <p className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold mb-2">🏆 Champion picks</p>
             <div className="flex flex-wrap gap-1.5">
-              {sorted.map(([team, count]) => (
-                <div
-                  key={team}
-                  title={team}
-                  className="flex items-center gap-1.5 bg-gray-900 border border-gray-700/70 rounded-lg px-2.5 py-1.5"
-                >
-                  <span className="text-lg leading-none">{getFlag(team)}</span>
-                  <div className="flex flex-col leading-none">
-                    <span className="text-[9px] font-bold text-gray-400 tracking-wide">{getCode(team)}</span>
-                    <span className="text-sm font-black text-white tabular-nums">{count}</span>
+              {sorted.map(([team, count]) => {
+                const isOut = eliminatedTeams.has(team)
+                return (
+                  <div
+                    key={team}
+                    title={isOut ? `${team} — eliminated` : team}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 border ${
+                      isOut
+                        ? 'bg-red-950/50 border-red-800/50'
+                        : 'bg-gray-900 border-gray-700/70'
+                    }`}
+                  >
+                    <span className={`text-lg leading-none ${isOut ? 'opacity-40' : ''}`}>{getFlag(team)}</span>
+                    <div className="flex flex-col leading-none">
+                      <span className={`text-[9px] font-bold tracking-wide ${isOut ? 'text-red-500/70 line-through' : 'text-gray-400'}`}>{getCode(team)}</span>
+                      <span className={`text-sm font-black tabular-nums ${isOut ? 'text-red-400/60' : 'text-white'}`}>{count}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )
