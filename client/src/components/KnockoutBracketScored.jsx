@@ -42,7 +42,7 @@ export function ptsLabel(pts) {
 }
 
 // ── Single knockout match card ────────────────────────────────────────────────
-export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement }) {
+export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement, eliminatedTeams }) {
   const awayRef = useRef(null)
 
   const [homeVal, setHomeVal] = useState(scorePick?.home_goals ?? '')
@@ -65,12 +65,8 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
 
   const resultExists = result?.home_goals != null
 
-  const resultWinner = result?.winner
-    ?? (resultExists && result.home_goals !== result.away_goals
-        ? (result.home_goals > result.away_goals ? homeTeam : awayTeam)
-        : null)
-  const homeEliminated = !!resultWinner && !!homeTeam && resultWinner !== homeTeam
-  const awayEliminated = !!resultWinner && !!awayTeam && resultWinner !== awayTeam
+  const homeEliminated = !!homeTeam && (eliminatedTeams?.has(homeTeam) ?? false)
+  const awayEliminated = !!awayTeam && (eliminatedTeams?.has(awayTeam) ?? false)
 
   function calcPts() {
     if (!resultExists || homeVal === '' || awayVal === '') return null
@@ -251,6 +247,15 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
   const matchById = {}
   for (const m of knockout) matchById[m.id] = m
 
+  // Teams that lost any completed knockout match — used for bracket-wide strikethrough
+  const eliminatedTeams = new Set()
+  for (const r of Object.values(matchResults)) {
+    if (r.winner && r.home_team && r.away_team) {
+      if (r.winner !== r.home_team) eliminatedTeams.add(r.home_team)
+      if (r.winner !== r.away_team) eliminatedTeams.add(r.away_team)
+    }
+  }
+
   const thirdPlaceMatch = matchById['m103']
   const roundKeys = ['R32', 'R16', 'QF', 'SF', 'Final']
   const totalWidth = BRACKET_ORDER.length * COL_W + (BRACKET_ORDER.length - 1) * CONN_W
@@ -305,6 +310,7 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                         awayTeam={teams.away || null}
                         advancePick={knockoutPicks[id]}
                         onPickAdvancement={onPickAdvancement}
+                        eliminatedTeams={eliminatedTeams}
                       />
                     </div>
                   </div>
@@ -334,6 +340,7 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                           awayTeam={thirdTeams.away || null}
                           advancePick={knockoutPicks['m103']}
                           onPickAdvancement={onPickAdvancement}
+                          eliminatedTeams={eliminatedTeams}
                         />
                       </div>
                     </div>

@@ -617,7 +617,9 @@ export default function AllPicks() {
               <p className="text-sm font-medium">No completed matches yet.</p>
             </div>
           ) : (
-            getScheduleDays(completedGroupMatches, matchDates).reverse().map(([dayLabel, dayMatches]) => (
+            getScheduleDays(completedGroupMatches, matchDates).reverse().map(([dayLabel, dayMatches]) => {
+              const recentFirst = [...dayMatches].reverse()
+              return (
               <div key={dayLabel}>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="h-px bg-gray-700/60 flex-1" />
@@ -627,7 +629,7 @@ export default function AllPicks() {
                   <div className="h-px bg-gray-700/60 flex-1" />
                 </div>
                 <div className="space-y-3">
-                  {dayMatches.map(m => {
+                  {recentFirst.map(m => {
                     const result = results[m.id]
                     const isKo   = m.round !== 'Group'
                     const home   = isKo ? (result?.home_team || null) : (typeof m.home === 'string' ? m.home : null)
@@ -788,7 +790,7 @@ export default function AllPicks() {
                   })}
                 </div>
               </div>
-            ))
+            )})
           )}
         </div>
       )}
