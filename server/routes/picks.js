@@ -62,15 +62,20 @@ function _scoresHash(allScores) {
  *    because matchup-correct check is too complex to simulate inline)
  *  - Bracket chain: simulated R32 winners feed into R16 matchups, etc.
  *  - Draws in knockout: coin-flip (penalty shootout)
+ *  - Eliminated teams: actual knockout winners seeded from wc_match_results + goal
+ *    derivation so that picks on eliminated teams correctly score 0 in all future rounds
  *
- * @param {Array}  allPicks       all score picks (group + knockout)
- * @param {Array}  allScores      db.getAllMatchScores()
- * @param {Array}  players        non-admin users
- * @param {Object} computedScores { [uid]: { total } } -- full group+knockout totals
- * @param {Object} bracketPicks   { [uid]: { [matchId]: teamName } } -- advancement picks
+ * @param {Array}  allPicks        all score picks (group + knockout)
+ * @param {Array}  allScores       db.getAllMatchScores()
+ * @param {Array}  players         non-admin users
+ * @param {Object} computedScores  { [uid]: { total } } -- full group+knockout totals
+ * @param {Object} bracketPicks    { [uid]: { [matchId]: teamName } } -- advancement picks
+ * @param {Array}  knockoutResults db.getKnockoutResults() -- for penalty-shootout winners
  */
-function computeWinPcts(allPicks, allScores, players, computedScores, bracketPicks = {}) {
-  const hash = _scoresHash(allScores)
+function computeWinPcts(allPicks, allScores, players, computedScores, bracketPicks = {}, knockoutResults = []) {
+  // Cache key includes knockout winners so invalidation fires when a KO result is recorded
+  const koWinnerStr = knockoutResults.filter(r => r.winner).map(r => `${r.match_id}:${r.winner}`).sort().join('|')
+  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr
   if (_winPctCache?.hash === hash) return _winPctCache.winPcts
 
   const uids = players.map(u => u.id)
@@ -83,24 +88,39 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
     pickLookup[p.user_id][p.match_id] = { home_goals: p.home_goals, away_goals: p.away_goals }
   }
 
-  // Known knockout team/winner data from match_scores
+  // Explicit knockout winners from wc_match_results (covers penalty shootouts)
+  const winnerFromResults = {}
+  for (const r of knockoutResults) {
+    if (r.winner) winnerFromResults[r.match_id] = r.winner
+  }
+
+  // Known knockout team/winner data.
+  // Winner precedence: wc_match_results > goal-derived (decisive scoreline) > null.
+  // This ensures simWinners is properly seeded for completed matches so that
+  // eliminated teams score 0 advance pts in all future rounds.
   const knownTeams = {}
   for (const s of allScores) {
     if (s.home_team || s.away_team || s.winner) {
+      let winner = winnerFromResults[s.match_id] || s.winner || null
+      if (!winner && s.home_goals != null && s.away_goals != null && s.home_team && s.away_team) {
+        if (s.home_goals > s.away_goals)      winner = s.home_team
+        else if (s.away_goals > s.home_goals) winner = s.away_team
+      }
       knownTeams[s.match_id] = {
         home_team: s.home_team || null,
         away_team: s.away_team || null,
-        winner:    s.winner    || null,
+        winner,
       }
     }
   }
 
-  // "Finished" = scoreline recorded OR winner recorded
-  const finished = new Set(
-    allScores
+  // "Finished" = scoreline recorded OR winner recorded (includes penalty-draw matches)
+  const finished = new Set([
+    ...allScores
       .filter(s => (s.home_goals != null && s.away_goals != null) || s.winner)
-      .map(s => s.match_id)
-  )
+      .map(s => s.match_id),
+    ...knockoutResults.filter(r => r.winner).map(r => r.match_id),
+  ])
   const pending = ALL_MATCHES.filter(m => !finished.has(m.id))
 
   // No matches remaining -> deterministic
@@ -368,7 +388,8 @@ router.get('/leaderboard', optionalAuth, (req, res) => {
   for (const u of players) {
     combinedScores[u.id] = { total: (groupScores[u.id]?.total || 0) + (koScores[u.id]?.total || 0) }
   }
-  const winPcts = computeWinPcts(allPicks, allScores, players, combinedScores, bracketPicksForSim)
+  const knockoutResults = db.getKnockoutResults()
+  const winPcts = computeWinPcts(allPicks, allScores, players, combinedScores, bracketPicksForSim, knockoutResults)
 
   const leaderboard = players
     .map(u => {
