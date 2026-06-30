@@ -470,7 +470,7 @@ export default function MyBracket() {
     if (!Object.keys(koResults).length) return matchResults
     const enriched = { ...matchResults }
     for (const [id, kr] of Object.entries(koResults)) {
-      if (kr.winner) enriched[id] = { ...(enriched[id] || {}), winner: kr.winner }
+      if (kr.winner) enriched[id] = { ...(enriched[id] || {}), winner: kr.winner, home_team: kr.home_team || null, away_team: kr.away_team || null }
     }
     return enriched
   }, [matchResults, koResults])
