@@ -391,6 +391,28 @@ export default function Admin() {
     return () => clearInterval(iv)
   }, [tab])
 
+  // Refresh sync settings every 30 s while on the Live Scores tab so the
+  // interval badge updates in real time when a match goes live.
+  useEffect(() => {
+    if (tab !== 'sync') return
+    const poll = async () => {
+      try {
+        const s = await admin.settings()
+        setSettings(prev => ({ ...prev, ...s.data }))
+      } catch {}
+    }
+    const iv = setInterval(poll, 30_000)
+    return () => clearInterval(iv)
+  }, [tab])
+
+  // Format a fetch_interval_min value (may be fractional, e.g. 0.5 = 30 s)
+  function fmtInterval(min) {
+    const m = Number(min)
+    if (!m) return '15 min'
+    if (m < 1) return `${Math.round(m * 60)}s`
+    return `${m} min`
+  }
+
   async function handlePicksLock(locked) {
     const lockISO = mtToISO(picksLockTime)
     await admin.picksLock(locked, lockISO)
@@ -1206,7 +1228,15 @@ export default function Admin() {
                 <div>
                   <p className="text-sm font-semibold text-white">Scheduled auto-sync</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Polls the API every {settings.fetch_interval_min || 15} min. Scores update within minutes of a match ending.
+                    Polls the API every {fmtInterval(settings.fetch_interval_min)}
+                    {settings.fetch_mode === 'live' && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs bg-red-900/50 text-red-400 border border-red-700/50 px-2 py-0.5 rounded-full font-bold animate-pulse">
+                        🔴 LIVE
+                      </span>
+                    )}
+                    {settings.fetch_mode === 'active' && (
+                      <span className="ml-2 text-xs text-yellow-400 font-medium">⏳ pre-kick</span>
+                    )}
                   </p>
                 </div>
                 <button
@@ -1221,7 +1251,11 @@ export default function Admin() {
               {autoFetchOn && (
                 <div className="flex items-center gap-2 text-xs text-green-400 bg-green-900/20 rounded-lg px-3 py-2">
                   <span>🔄</span>
-                  <span>Auto-syncing every {settings.fetch_interval_min || 15} minutes — scores will update live during the tournament</span>
+                  <span>
+                    {settings.fetch_mode === 'live'
+                      ? `🔴 Live — syncing every ${fmtInterval(settings.fetch_interval_min)}`
+                      : `Auto-syncing every ${fmtInterval(settings.fetch_interval_min)} — scores will update live during the tournament`}
+                  </span>
                 </div>
               )}
             </div>

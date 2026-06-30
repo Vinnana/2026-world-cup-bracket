@@ -4,7 +4,7 @@ import authRoutes from './routes/auth.js'
 import bracketRoutes from './routes/brackets.js'
 import adminRoutes from './routes/admin.js'
 import picksRoutes from './routes/picks.js'
-import liveRoutes from './routes/liveScores.js'
+import liveRoutes, { fetchLiveScores } from './routes/liveScores.js'
 import db, { initDB } from './database.js'
 import { seedPdaiPicks } from './seeds/pdai-picks.js'
 import { seedAdyaPicks } from './seeds/adya-picks.js'
@@ -15,8 +15,9 @@ import { MATCH_DATES } from './schedule.js'
 const app = express()
 const PORT = process.env.PORT || 3001
 // Poll fast while a match is in play, slowly when nothing is on.
-const LIVE_FETCH_INTERVAL_MIN = Number(process.env.LIVE_FETCH_INTERVAL_MIN || 1)
-const IDLE_FETCH_INTERVAL_MIN = Number(process.env.IDLE_FETCH_INTERVAL_MIN || 15)
+const ACTIVE_FETCH_INTERVAL_SEC = Number(process.env.ACTIVE_FETCH_INTERVAL_SEC || 30) // during live play
+const LIVE_FETCH_INTERVAL_MIN   = Number(process.env.LIVE_FETCH_INTERVAL_MIN   || 1)  // in schedule window, pre-kick
+const IDLE_FETCH_INTERVAL_MIN   = Number(process.env.IDLE_FETCH_INTERVAL_MIN   || 15) // nothing scheduled
 
 // A match counts as "in play" from ~5 min before kickoff until ~2.5h after, which
 // comfortably covers a full match incl. halftime and stoppage time.
@@ -53,12 +54,34 @@ function startScheduler() {
   }
   console.log(`Auto-fetch (${activeProvider()}): enabled, polling every ${LIVE_FETCH_INTERVAL_MIN} min during live games, every ${IDLE_FETCH_INTERVAL_MIN} min otherwise (when turned on in Admin).`)
 
-  // Self-rescheduling loop so the cadence can change with the schedule.
+  // Self-rescheduling loop so the cadence adapts to actual match activity.
+  // Three modes:
+  //   live   — ESPN says a match is in progress (including HT) → every ACTIVE_FETCH_INTERVAL_SEC (30 s)
+  //   active — within schedule window but ESPN not yet live    → every LIVE_FETCH_INTERVAL_MIN (1 min)
+  //   idle   — nothing scheduled                               → every IDLE_FETCH_INTERVAL_MIN (15 min)
   async function tick() {
-    const live = anyGameLive()
-    const intervalMin = live ? LIVE_FETCH_INTERVAL_MIN : IDLE_FETCH_INTERVAL_MIN
-    // Keep the admin panel's displayed interval in sync with the live cadence.
-    db.setSetting('fetch_interval_min', String(intervalMin))
+    let intervalMs = IDLE_FETCH_INTERVAL_MIN * 60_000
+    let mode = 'idle'
+
+    if (anyGameLive()) {
+      intervalMs = LIVE_FETCH_INTERVAL_MIN * 60_000
+      mode = 'active'
+      // Check ESPN to see if a match is actually in progress right now
+      try {
+        const scores = await fetchLiveScores()
+        const anyPlaying = Object.values(scores).some(s => s.status === 'live' || s.status === 'ht')
+        if (anyPlaying) {
+          intervalMs = ACTIVE_FETCH_INTERVAL_SEC * 1000
+          mode = 'live'
+        }
+      } catch {
+        // ESPN unavailable — stay at 1-min window cadence
+      }
+    }
+
+    // Keep the admin panel's displayed interval and mode in sync.
+    db.setSetting('fetch_interval_min', String(intervalMs / 60_000))
+    db.setSetting('fetch_mode', mode)
 
     if (db.getSetting('auto_fetch') === 'true') {
       try {
@@ -66,14 +89,14 @@ function startScheduler() {
         db.setSetting('last_fetch_at', summary.at)
         db.setSetting('last_fetch_status', JSON.stringify(summary))
         addSyncHistory(db, summary)
-        console.log(`Auto-fetch: ${summary.groups.length} groups, ${summary.knockout.length} knockout matches updated (${live ? 'live' : 'idle'}, next in ${intervalMin}m).`)
+        console.log(`Auto-fetch: ${summary.groups.length} groups, ${summary.knockout.length} knockout updated (${mode}, next in ${intervalMs / 1000}s).`)
       } catch (err) {
         db.setSetting('last_fetch_status', JSON.stringify({ error: err.message, at: new Date().toISOString() }))
         console.warn('Auto-fetch failed:', err.message)
       }
     }
 
-    setTimeout(tick, intervalMin * 60 * 1000)
+    setTimeout(tick, intervalMs)
   }
 
   tick()
@@ -85,9 +108,9 @@ async function main() {
     await initDB()
     await seedPdaiPicks(db)
     await seedAdyaPicks(db)
-    // Baseline for the admin display; the scheduler updates this each tick to the
-    // live (1 min) or idle (15 min) cadence as games come and go.
+    // Baseline for admin display; each scheduler tick overwrites these with the real cadence.
     db.setSetting('fetch_interval_min', String(IDLE_FETCH_INTERVAL_MIN))
+    db.setSetting('fetch_mode', 'idle')
   } catch (err) {
     console.error('Failed to initialise database:', err.message)
     process.exit(1)

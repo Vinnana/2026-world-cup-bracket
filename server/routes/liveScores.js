@@ -24,7 +24,7 @@ const KNOCKOUT_IDS = new Set(KNOCKOUT.map(m => m.id))
 
 const router = Router()
 
-const CACHE_TTL_MS = 45_000   // refresh at most every 45 s
+const CACHE_TTL_MS = 15_000   // refresh at most every 15 s (short so live→ft transitions are caught quickly)
 
 let _cache = null   // { ts: number, scores: Object }
 
@@ -149,6 +149,8 @@ async function fetchLiveScores() {
   _cache = { ts: Date.now(), scores }
   return scores
 }
+
+export { fetchLiveScores }
 
 // ── Route ────────────────────────────────────────────────────────────────────
 router.get('/', async (_req, res) => {
