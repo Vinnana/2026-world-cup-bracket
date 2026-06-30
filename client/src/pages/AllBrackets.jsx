@@ -97,7 +97,10 @@ export default function AllBrackets() {
 
     const built = {}
     for (const m of knockout) {
-      const actual = teamOverrides[m.id]
+      // Only use ESPN actual teams for R32 (home/away are group-slot strings like '1A').
+      // R16+ matches have {win/lose: matchId} objects — always cascade from bracket picks.
+      const isR32 = typeof m.home === 'string' && typeof m.away === 'string'
+      const actual = isR32 ? teamOverrides[m.id] : null
       if (actual?.home && actual?.away) {
         built[m.id] = { home: actual.home, away: actual.away }
       } else {
