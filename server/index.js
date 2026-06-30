@@ -19,17 +19,22 @@ const ACTIVE_FETCH_INTERVAL_SEC = Number(process.env.ACTIVE_FETCH_INTERVAL_SEC |
 const LIVE_FETCH_INTERVAL_MIN   = Number(process.env.LIVE_FETCH_INTERVAL_MIN   || 1)  // in schedule window, pre-kick
 const IDLE_FETCH_INTERVAL_MIN   = Number(process.env.IDLE_FETCH_INTERVAL_MIN   || 15) // nothing scheduled
 
-// A match counts as "in play" from ~5 min before kickoff until ~2.5h after, which
-// comfortably covers a full match incl. halftime and stoppage time.
+// Schedule window: 5 min before kickoff to 3.5 h after (covers 90 min + HT + AET + PKs + buffer).
+// Used as a fallback when ESPN is unavailable and for pre-kick detection.
 const GAME_LEAD_MS   = 5 * 60 * 1000
-const GAME_WINDOW_MS = 2.5 * 60 * 60 * 1000
-function anyGameLive() {
+const GAME_WINDOW_MS = 3.5 * 60 * 60 * 1000
+function anyGameInWindow() {
   const now = Date.now()
   return Object.values(MATCH_DATES).some(iso => {
     const ko = new Date(iso).getTime()
     return Number.isFinite(ko) && now >= ko - GAME_LEAD_MS && now <= ko + GAME_WINDOW_MS
   })
 }
+
+// Ticks of LIVE_FETCH_INTERVAL_MIN polling to do after ESPN stops showing active matches.
+// Gives football-data.org (and other providers) time to publish the final result.
+const POST_GAME_COOLDOWN_TICKS = 10   // ~10 min of 1-min polling after game ends
+let _cooldownTicks = 0
 
 app.use(cors())
 app.use(express.json())
@@ -52,30 +57,54 @@ function startScheduler() {
     console.log(`Auto-fetch: ${activeProvider()} not configured — results are admin-entered only.`)
     return
   }
-  console.log(`Auto-fetch (${activeProvider()}): enabled, polling every ${LIVE_FETCH_INTERVAL_MIN} min during live games, every ${IDLE_FETCH_INTERVAL_MIN} min otherwise (when turned on in Admin).`)
+  console.log(`Auto-fetch (${activeProvider()}): ${ACTIVE_FETCH_INTERVAL_SEC}s live / ${LIVE_FETCH_INTERVAL_MIN}m pre-kick / ${IDLE_FETCH_INTERVAL_MIN}m idle (when turned on in Admin).`)
 
-  // Self-rescheduling loop so the cadence adapts to actual match activity.
-  // Three modes:
-  //   live   — ESPN says a match is in progress (including HT) → every ACTIVE_FETCH_INTERVAL_SEC (30 s)
-  //   active — within schedule window but ESPN not yet live    → every LIVE_FETCH_INTERVAL_MIN (1 min)
-  //   idle   — nothing scheduled                               → every IDLE_FETCH_INTERVAL_MIN (15 min)
+  // Self-rescheduling loop whose cadence adapts to actual ESPN live status.
+  //
+  // Modes:
+  //   live      — ESPN: ≥1 match status='live'|'ht' (incl. AET, PKs) → ACTIVE_FETCH_INTERVAL_SEC (30 s)
+  //   finishing — ESPN: all matches 'ft', cooldown running             → LIVE_FETCH_INTERVAL_MIN  (1 min)
+  //   active    — within schedule window, game not yet kicked off      → LIVE_FETCH_INTERVAL_MIN  (1 min)
+  //   idle      — nothing scheduled, cooldown expired                  → IDLE_FETCH_INTERVAL_MIN  (15 min)
+  //
+  // ESPN is always checked unconditionally so AET/PKs that exceed the schedule window are handled.
+  // The post-game cooldown keeps syncing at 1-min after ESPN shows 'ft' so football-data.org has
+  // time to publish the final result before we drop back to idle.
   async function tick() {
     let intervalMs = IDLE_FETCH_INTERVAL_MIN * 60_000
     let mode = 'idle'
+    const inWindow = anyGameInWindow()
 
-    if (anyGameLive()) {
-      intervalMs = LIVE_FETCH_INTERVAL_MIN * 60_000
-      mode = 'active'
-      // Check ESPN to see if a match is actually in progress right now
-      try {
-        const scores = await fetchLiveScores()
-        const anyPlaying = Object.values(scores).some(s => s.status === 'live' || s.status === 'ht')
-        if (anyPlaying) {
-          intervalMs = ACTIVE_FETCH_INTERVAL_SEC * 1000
-          mode = 'live'
-        }
-      } catch {
-        // ESPN unavailable — stay at 1-min window cadence
+    try {
+      const scores = await fetchLiveScores()
+      const anyActive = Object.values(scores).some(s => s.status === 'live' || s.status === 'ht')
+
+      if (anyActive) {
+        // Game in progress (regular time, HT, AET, or PKs) — poll fast
+        intervalMs = ACTIVE_FETCH_INTERVAL_SEC * 1000
+        mode = 'live'
+        _cooldownTicks = POST_GAME_COOLDOWN_TICKS   // reset cooldown each live tick
+      } else if (inWindow) {
+        // In schedule window but game hasn't started yet (or window still open after FT)
+        intervalMs = LIVE_FETCH_INTERVAL_MIN * 60_000
+        mode = 'active'
+        // If cooldown was counting down and we're still in the window, keep it running
+      } else if (_cooldownTicks > 0) {
+        // Game just ended — keep syncing at 1 min so the provider has time to publish the result
+        intervalMs = LIVE_FETCH_INTERVAL_MIN * 60_000
+        mode = 'finishing'
+        _cooldownTicks--
+      }
+      // else: mode = 'idle', intervalMs = 15 min
+    } catch {
+      // ESPN unavailable — fall back to schedule-window detection + cooldown
+      if (inWindow) {
+        intervalMs = LIVE_FETCH_INTERVAL_MIN * 60_000
+        mode = 'active'
+      } else if (_cooldownTicks > 0) {
+        intervalMs = LIVE_FETCH_INTERVAL_MIN * 60_000
+        mode = 'finishing'
+        _cooldownTicks--
       }
     }
 

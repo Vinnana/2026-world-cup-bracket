@@ -1234,6 +1234,9 @@ export default function Admin() {
                         🔴 LIVE
                       </span>
                     )}
+                    {settings.fetch_mode === 'finishing' && (
+                      <span className="ml-2 text-xs text-orange-400 font-medium">🏁 finalising result</span>
+                    )}
                     {settings.fetch_mode === 'active' && (
                       <span className="ml-2 text-xs text-yellow-400 font-medium">⏳ pre-kick</span>
                     )}
@@ -1254,7 +1257,9 @@ export default function Admin() {
                   <span>
                     {settings.fetch_mode === 'live'
                       ? `🔴 Live — syncing every ${fmtInterval(settings.fetch_interval_min)}`
-                      : `Auto-syncing every ${fmtInterval(settings.fetch_interval_min)} — scores will update live during the tournament`}
+                      : settings.fetch_mode === 'finishing'
+                        ? `🏁 Game ended — finalising result, syncing every ${fmtInterval(settings.fetch_interval_min)}`
+                        : `Auto-syncing every ${fmtInterval(settings.fetch_interval_min)} — scores will update live during the tournament`}
                   </span>
                 </div>
               )}
