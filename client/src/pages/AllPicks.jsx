@@ -676,7 +676,20 @@ export default function AllPicks() {
                                 ? (result.home_goals > result.away_goals ? result.home_team : result.away_team)
                                 : null)
                             const advanceWrong = isKo && hasAdvancePick && !!effectiveWinner && advancePick !== effectiveWinner
-                            const pts = isKo ? (koPtsObj?.total ?? (advanceWrong ? 0 : null)) : calcPts(pick, result)
+                            let pts
+                            if (isKo) {
+                              if (koPtsObj != null) {
+                                pts = koPtsObj.total
+                              } else if (effectiveWinner != null) {
+                                const advPts = (hasAdvancePick && advancePick === effectiveWinner) ? 10 : 0
+                                const scrPts = (hasPick && resultIn) ? (calcPts(pick, result) ?? 0) : 0
+                                pts = advPts + scrPts
+                              } else {
+                                pts = null
+                              }
+                            } else {
+                              pts = calcPts(pick, result)
+                            }
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
                             return (

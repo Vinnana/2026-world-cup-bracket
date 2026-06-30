@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { brackets, tournament, picks as picksApi } from '../api'
 import { getFlag } from '../utils/flags'
 
@@ -66,6 +66,13 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
   }, [scorePick?.home_goals, scorePick?.away_goals])
 
   const resultExists = result?.home_goals != null
+
+  const resultWinner = result?.winner
+    ?? (resultExists && result.home_goals !== result.away_goals
+        ? (result.home_goals > result.away_goals ? homeTeam : awayTeam)
+        : null)
+  const homeEliminated = !!resultWinner && !!homeTeam && resultWinner !== homeTeam
+  const awayEliminated = !!resultWinner && !!awayTeam && resultWinner !== awayTeam
 
   function calcPts() {
     if (!resultExists || homeVal === '' || awayVal === '') return null
@@ -169,7 +176,7 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
           ? <span className="text-gray-500 italic flex-1" style={{ fontSize: 10 }}>TBD</span>
           : <>
               <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(homeTeam)}</span>
-              <span className="text-gray-200 truncate flex-1 min-w-0" style={{ fontSize: 10 }}>{shortName(homeTeam)}</span>
+              <span className={`truncate flex-1 min-w-0 ${homeEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10 }}>{shortName(homeTeam)}</span>
             </>
         }
         <input
@@ -189,7 +196,7 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
           ? <span className="text-gray-500 italic flex-1" style={{ fontSize: 10 }}>TBD</span>
           : <>
               <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(awayTeam)}</span>
-              <span className="text-gray-200 truncate flex-1 min-w-0" style={{ fontSize: 10 }}>{shortName(awayTeam)}</span>
+              <span className={`truncate flex-1 min-w-0 ${awayEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10 }}>{shortName(awayTeam)}</span>
             </>
         }
         <input
@@ -390,6 +397,7 @@ export default function MyBracket() {
   const [knockoutPicks, setKnockoutPicks] = useState({})
   const [scorePicks,    setScorePicks]    = useState({})
   const [matchResults,  setMatchResults]  = useState({})
+  const [koResults,     setKoResults]     = useState({})
   const [teamOverrides, setTeamOverrides] = useState({})
   const [knockoutOpen,  setKnockoutOpen]  = useState(false)
   const [knockoutLocked,setKnockoutLocked]= useState(false)
@@ -407,11 +415,12 @@ export default function MyBracket() {
   useEffect(() => {
     async function load() {
       try {
-        const [tourney, myBracket, myScorePicks, matchesRes] = await Promise.all([
+        const [tourney, myBracket, myScorePicks, matchesRes, bracketRes] = await Promise.all([
           tournament.data(),
           brackets.my(),
           picksApi.my(),
           picksApi.matches(),
+          brackets.results(),
         ])
 
         setKnockout(tourney.data.knockout || [])
@@ -428,6 +437,7 @@ export default function MyBracket() {
         setKnockoutLocked(!!myBracket.data.knockout_locked)
         setTeamOverrides(matchesRes.data.team_overrides || {})
         setMatchResults(matchesRes.data.results || {})
+        setKoResults(bracketRes.data?.knockout || {})
 
         const scoreMap = {}
         for (const p of (myScorePicks.data.picks || [])) {
@@ -448,6 +458,16 @@ export default function MyBracket() {
   // Keep refs in sync so callbacks see fresh values without stale closures
   groupPicksRef.current    = groupPicks
   knockoutPicksRef.current = knockoutPicks
+
+  // Merge winner data from wc_match_results into matchResults for strikethrough
+  const enrichedMatchResults = useMemo(() => {
+    if (!Object.keys(koResults).length) return matchResults
+    const enriched = { ...matchResults }
+    for (const [id, kr] of Object.entries(koResults)) {
+      if (kr.winner) enriched[id] = { ...(enriched[id] || {}), winner: kr.winner }
+    }
+    return enriched
+  }, [matchResults, koResults])
 
   // Resolve the displayed team for each knockout slot.
   // Actual ESPN data takes priority; falls back to bracket picks cascade.
@@ -628,7 +648,7 @@ export default function MyBracket() {
         knockout={knockout}
         scorePicks={scorePicks}
         knockoutPicks={knockoutPicks}
-        matchResults={matchResults}
+        matchResults={enrichedMatchResults}
         locked={!knockoutEditable}
         onSaveScore={handleSaveScore}
         onClearScore={handleClearScore}

@@ -448,6 +448,18 @@ router.get('/all', optionalAuth, (req, res) => {
   const resultMap = {}
   for (const s of allScores) resultMap[s.match_id] = s
 
+  // Enrich KO match results with winner from wc_match_results (penalty draws have winner there)
+  const knockoutWinners = db.getKnockoutResults()
+  for (const r of knockoutWinners) {
+    if (r.winner) {
+      if (resultMap[r.match_id]) {
+        resultMap[r.match_id] = { ...resultMap[r.match_id], winner: r.winner }
+      } else {
+        resultMap[r.match_id] = { home_team: r.home_team ?? null, away_team: r.away_team ?? null, home_goals: null, away_goals: null, winner: r.winner }
+      }
+    }
+  }
+
   // Bracket advancement picks: user_id → { [match_id]: teamName }
   const bracketPicksMap = {}
   for (const u of players) {

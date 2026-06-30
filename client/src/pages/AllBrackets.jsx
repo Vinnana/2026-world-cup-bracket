@@ -62,6 +62,17 @@ export default function AllBrackets() {
     return koMap
   }, [allPicksData, selected])
 
+  // Enrich matchResults with winner from results.knockout so KoCard can show strikethrough
+  const enrichedMatchResults = useMemo(() => {
+    const ko = results?.knockout || {}
+    if (!Object.keys(ko).length) return matchResults
+    const enriched = { ...matchResults }
+    for (const [id, kr] of Object.entries(ko)) {
+      if (kr.winner) enriched[id] = { ...(enriched[id] || {}), winner: kr.winner }
+    }
+    return enriched
+  }, [matchResults, results])
+
   // Build resolvedTeams: ESPN actuals first, then cascade through user's bracket picks
   const resolvedTeams = useMemo(() => {
     if (!viewing || !knockout.length) return {}
@@ -160,7 +171,7 @@ export default function AllBrackets() {
               knockout={knockout}
               scorePicks={viewingScorePicks}
               knockoutPicks={viewing.picks?.knockout || {}}
-              matchResults={matchResults}
+              matchResults={enrichedMatchResults}
               locked={true}
               resolvedTeams={resolvedTeams}
             />

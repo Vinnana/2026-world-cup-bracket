@@ -65,6 +65,13 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
 
   const resultExists = result?.home_goals != null
 
+  const resultWinner = result?.winner
+    ?? (resultExists && result.home_goals !== result.away_goals
+        ? (result.home_goals > result.away_goals ? homeTeam : awayTeam)
+        : null)
+  const homeEliminated = !!resultWinner && !!homeTeam && resultWinner !== homeTeam
+  const awayEliminated = !!resultWinner && !!awayTeam && resultWinner !== awayTeam
+
   function calcPts() {
     if (!resultExists || homeVal === '' || awayVal === '') return null
     const ph = parseInt(homeVal), pa = parseInt(awayVal)
@@ -165,7 +172,7 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
           ? <span className="text-gray-500 italic flex-1" style={{ fontSize: 10 }}>TBD</span>
           : <>
               <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(homeTeam)}</span>
-              <span className="text-gray-200 truncate flex-1 min-w-0" style={{ fontSize: 10 }}>{shortName(homeTeam)}</span>
+              <span className={`truncate flex-1 min-w-0 ${homeEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10 }}>{shortName(homeTeam)}</span>
             </>
         }
         <input
@@ -185,7 +192,7 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
           ? <span className="text-gray-500 italic flex-1" style={{ fontSize: 10 }}>TBD</span>
           : <>
               <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(awayTeam)}</span>
-              <span className="text-gray-200 truncate flex-1 min-w-0" style={{ fontSize: 10 }}>{shortName(awayTeam)}</span>
+              <span className={`truncate flex-1 min-w-0 ${awayEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10 }}>{shortName(awayTeam)}</span>
             </>
         }
         <input
