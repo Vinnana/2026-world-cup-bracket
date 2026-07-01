@@ -640,31 +640,32 @@ export async function runResultsSync(db) {
   if (meta) summary.api_meta = meta                // competition/season metadata for diagnostics
   summary.rateLimit = rateLimitStatus()            // snapshot after all HTTP calls
   await processMatchScores(db, matches, summary)   // ← score-prediction system (awaited — writes must persist)
-  processMatchDates(db, matches)
   processGroups(db, standings, summary)             // ← bracket / group standings (needed before knockout)
   await processKnockout(db, matches, summary)       // ← knockout matchups + winners (records actual teams/orientation)
+  processMatchDates(db, matches)                    // ← after processKnockout so findKnockoutMatchId can find teams
   return summary
 }
 
 export function processMatchDates(db, matches) {
   let dateMap = {}
   try { dateMap = JSON.parse(db.getSetting('match_dates') || '{}') } catch {}
-  let added = 0
+  let changed = 0
   for (const m of matches) {
     if (!m.utcDate) continue
     const home = mapTeam(m.homeTeam?.name)
     const away = mapTeam(m.awayTeam?.name)
     if (!home || !away) continue
     const gId = findGroupMatchId(home, away)
-    if (gId && !dateMap[gId]) { dateMap[gId] = m.utcDate; added++ }
-    else if (!gId) {
+    if (gId) {
+      if (dateMap[gId] !== m.utcDate) { dateMap[gId] = m.utcDate; changed++ }
+    } else {
       // Knockout: look up the match ID from already-recorded teams
       const koId = findKnockoutMatchId(home, away, db)
-      if (koId && !dateMap[koId]) { dateMap[koId] = m.utcDate; added++ }
+      if (koId && dateMap[koId] !== m.utcDate) { dateMap[koId] = m.utcDate; changed++ }
     }
   }
-  if (added > 0) db.setSetting('match_dates', JSON.stringify(dateMap))
-  return added
+  if (changed > 0) db.setSetting('match_dates', JSON.stringify(dateMap))
+  return changed
 }
 
 export function addSyncHistory(db, summary) {
