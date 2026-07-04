@@ -400,12 +400,18 @@ export default function AllPicks() {
   const [error,             setError]             = useState('')
 
   useEffect(() => {
+    // Fetch tournament structure once (non-blocking — matchup analysis degrades gracefully)
+    tournamentApi.data()
+      .then(t => setKnockoutStructure(t.data.knockout || []))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     async function load() {
       try {
-        const [res, tourney] = await Promise.all([picksApi.all(), tournamentApi.data()])
+        const res = await picksApi.all()
         setData(res.data)
         setMatchDates(res.data.match_dates || {})
-        setKnockoutStructure(tourney.data.knockout || [])
       } catch (err) {
         setError('Failed to load picks')
       } finally {
