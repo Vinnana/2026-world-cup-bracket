@@ -490,13 +490,25 @@ export default function AllPicks() {
   })
   const hasActiveLive = pendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
 
+  // matchById lookup for fast access in live bonus loops
+  const matchById = {}
+  for (const m of matches) matchById[m.id] = m
+
   // Per-user live bonus (for By Player view)
   const userLiveBonusMap = {}
   for (const u of users) {
     let bonus = 0
     for (const [matchId, s] of pendingMatches) {
       const pick = u.picks[matchId]
-      if (pick?.home_goals != null) bonus += scoreMatchClient(pick, s.home_score, s.away_score)
+      if (pick?.home_goals == null) continue
+      const m = matchById[matchId]
+      const isKo = m && m.round !== 'Group'
+      const isR32 = isKo && typeof m?.home === 'string' && typeof m?.away === 'string'
+      if (isKo && !isR32) {
+        const mStatus = getMatchupStatus(m, results[matchId], u.bracket_picks || {}, parentsMap)
+        if (mStatus !== 'correct') continue
+      }
+      bonus += scoreMatchClient(pick, s.home_score, s.away_score)
     }
     userLiveBonusMap[u.user_id] = bonus
   }
