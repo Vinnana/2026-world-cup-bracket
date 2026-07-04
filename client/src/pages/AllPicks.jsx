@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { picks as picksApi, liveScores as liveApi } from '../api'
+import { useState, useEffect, useMemo } from 'react'
+import { picks as picksApi, liveScores as liveApi, tournament as tournamentApi } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { getFlag } from '../utils/flags'
 import { getRealName } from '../utils/nicknames'
@@ -73,6 +73,60 @@ function ptsPillKo(pts) {
   if (pts >= 14) return 'bg-pink-400 text-white'
   if (pts >= 10) return 'bg-blue-500 text-white'
   return 'bg-red-600 text-white'
+}
+
+// ─── Matchup-status helpers (R16+, upcoming only) ────────────────────────────
+// For each R16+ match, parentsMap[matchId] = { homeSrc, awaySrc } where each
+// src is the matchId whose winner fills that slot (null for R32 group strings).
+function buildParentsMap(knockout) {
+  const map = {}
+  for (const m of knockout) {
+    map[m.id] = {
+      homeSrc: m.home?.win || null,
+      awaySrc: m.away?.win || null,
+      hasLose: !!(m.home?.lose || m.away?.lose),
+    }
+  }
+  return map
+}
+
+// Returns 'correct' | 'advance-only' | 'eliminated' | 'no-pick' | 'r32'
+function getMatchupStatus(match, result, userBracketPicks, parentsMap) {
+  const actualHome = result?.home_team
+  const actualAway = result?.away_team
+  if (!actualHome || !actualAway) return 'unknown'
+
+  const advancePick = userBracketPicks?.[match.id]
+  const isR32 = typeof match.home === 'string' && typeof match.away === 'string'
+
+  if (isR32) return 'r32'  // R32 matchup is always correct (teams come from group stage)
+
+  if (!advancePick) return 'no-pick'
+
+  const inMatch = advancePick === actualHome || advancePick === actualAway
+
+  const p = parentsMap[match.id]
+  if (!p || p.hasLose) {
+    // 3rd-place or unknown structure → only check advance pick
+    return inMatch ? 'advance-only' : 'eliminated'
+  }
+
+  const { homeSrc, awaySrc } = p
+  const predHome = homeSrc ? (userBracketPicks?.[homeSrc] || null) : null
+  const predAway = awaySrc ? (userBracketPicks?.[awaySrc] || null) : null
+
+  if (!predHome || !predAway) {
+    return inMatch ? 'advance-only' : 'eliminated'
+  }
+
+  const matchupCorrect =
+    new Set([predHome, predAway]).size === 2 &&
+    predHome !== predAway &&
+    ((predHome === actualHome && predAway === actualAway) ||
+     (predHome === actualAway && predAway === actualHome))
+
+  if (matchupCorrect) return inMatch ? 'correct' : 'eliminated'
+  return inMatch ? 'advance-only' : 'eliminated'
 }
 
 const MEDALS = ['🥇', '🥈', '🥉']
@@ -337,19 +391,21 @@ function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, has
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AllPicks() {
   const { user } = useAuth()
-  const [data,       setData]       = useState(null)
-  const [matchDates, setMatchDates] = useState({})
-  const [liveScores, setLiveScores] = useState({})
-  const [viewMode,   setViewMode]   = useState('upcoming') // 'upcoming' | 'completed' | 'player'
-  const [loading,    setLoading]    = useState(true)
-  const [error,      setError]      = useState('')
+  const [data,              setData]              = useState(null)
+  const [matchDates,        setMatchDates]        = useState({})
+  const [liveScores,        setLiveScores]        = useState({})
+  const [knockoutStructure, setKnockoutStructure] = useState([])
+  const [viewMode,          setViewMode]          = useState('upcoming')
+  const [loading,           setLoading]           = useState(true)
+  const [error,             setError]             = useState('')
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await picksApi.all()
+        const [res, tourney] = await Promise.all([picksApi.all(), tournamentApi.data()])
         setData(res.data)
         setMatchDates(res.data.match_dates || {})
+        setKnockoutStructure(tourney.data.knockout || [])
       } catch (err) {
         setError('Failed to load picks')
       } finally {
@@ -415,6 +471,9 @@ export default function AllPicks() {
   // Keep legacy aliases used inside the two view sections below
   const upcomingGroupMatches  = upcomingMatches
   const completedGroupMatches = completedMatches
+
+  // ── Matchup analysis (R16+, upcoming only) ─────────────────────────────────
+  const parentsMap = useMemo(() => buildParentsMap(knockoutStructure), [knockoutStructure])
 
   // ── Live scoring computation ────────────────────────────────────────────────
   // Pending: ESPN has a score but admin hasn't confirmed yet
@@ -538,6 +597,50 @@ export default function AllPicks() {
                             </span>
                           )}
                         </div>
+                        {/* ── Matchup insight banner (R16+ only, before kick-off) ── */}
+                        {isKo && m.round !== 'R32' && !resultIn && (() => {
+                          const statuses = users.map(u =>
+                            getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
+                          )
+                          const nCorrect  = statuses.filter(s => s === 'correct').length
+                          const nPartial  = statuses.filter(s => s === 'advance-only').length
+                          const nElim     = statuses.filter(s => s === 'eliminated').length
+                          const nTotal    = users.length
+
+                          if (nCorrect === nTotal) return null
+
+                          if (nCorrect === 0 && nPartial > 0) return (
+                            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-900/20 border border-amber-700/30 text-[11px]">
+                              <span className="text-amber-300 flex items-center gap-1">
+                                <span>⚡</span>
+                                <span className="font-medium">Score bonus locked — no one predicted this matchup</span>
+                              </span>
+                              <span className="text-amber-400 font-bold shrink-0">Max +10 pts</span>
+                            </div>
+                          )
+                          if (nCorrect === 0 && nElim === nTotal) return (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-900/20 border border-red-700/30 text-[11px] text-red-400">
+                              <span>✗</span>
+                              <span className="font-medium">All advance picks eliminated — 0 pts available</span>
+                            </div>
+                          )
+                          if (nCorrect === 0) return (
+                            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-900/20 border border-amber-700/30 text-[11px]">
+                              <span className="text-amber-300 flex items-center gap-1">
+                                <span>⚡</span>
+                                <span className="font-medium">Score bonus locked — no one predicted this matchup</span>
+                              </span>
+                              <span className="text-amber-400 font-bold shrink-0">{nPartial} can score +10</span>
+                            </div>
+                          )
+                          return (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-800/50 border border-gray-700/30 text-[11px] text-gray-400">
+                              <span>🎯</span>
+                              <span>{nCorrect}/{nTotal} predicted this matchup · full 20 pts available</span>
+                            </div>
+                          )
+                        })()}
+
                         <div className="flex flex-wrap gap-1.5">
                           {users.map(u => {
                             const pick = u.picks[m.id]
@@ -558,25 +661,34 @@ export default function AllPicks() {
                             const showPts = (resultIn || effectiveWinner) ? pts : livePts
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
+
+                            // Matchup status for pre-kick R16+ tiles
+                            const mStatus = (isKo && m.round !== 'R32' && !resultIn && !effectiveWinner)
+                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
+                              : null
+
+                            const tileClass = mStatus === 'eliminated' ? 'bg-red-900/50 border-red-700/50'
+                              : mStatus === 'advance-only'             ? 'bg-amber-900/25 border-amber-600/40'
+                              : mStatus === 'no-pick'                  ? 'bg-red-900/80 border-red-600'
+                              : pickBoxClass(showPts, hasPick || hasAdvancePick)
+
                             return (
                               <div
                                 key={u.user_id}
-                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${
-                                  pickBoxClass(showPts, hasPick || hasAdvancePick)
-                                } ${isMePick ? 'z-10 ring-[3px] ring-white shadow-[0_0_0_5px_rgba(201,162,39,0.7),0_0_16px_rgba(201,162,39,0.5)]' : ''}`}
+                                className={`relative flex flex-col items-center px-2 py-1 rounded text-xs border ${tileClass} ${isMePick ? 'z-10 ring-[3px] ring-white shadow-[0_0_0_5px_rgba(201,162,39,0.7),0_0_16px_rgba(201,162,39,0.5)]' : ''}`}
                               >
                                 <span className={`text-[9px] truncate max-w-[4rem] ${isMePick ? 'text-fifa-gold font-bold' : 'text-gray-400'}`}>
                                   {label}
                                 </span>
                                 {hasPick ? (
                                   <>
-                                    <span className="font-bold tabular-nums text-gray-200 text-[11px] leading-tight">
+                                    <span className={`font-bold tabular-nums text-[11px] leading-tight ${
+                                      mStatus === 'eliminated' || mStatus === 'advance-only' ? 'text-gray-500' : 'text-gray-200'
+                                    }`}>
                                       {pick.home_goals}–{pick.away_goals}
                                     </span>
                                     {showPts != null && (
-                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${
-                                        ptsPill(showPts)
-                                      }`}>
+                                      <span className={`mt-0.5 px-1 rounded text-[9px] font-bold leading-tight ${ptsPill(showPts)}`}>
                                         {showPts > 0 ? `+${showPts}` : '✗'}
                                       </span>
                                     )}
@@ -585,15 +697,23 @@ export default function AllPicks() {
                                   <span className="text-gray-400 text-[9px]">—</span>
                                 )}
                                 {isKo && advancePick && (() => {
-                                  const cls = effectiveWinner == null ? 'text-gray-500'
-                                    : effectiveWinner === advancePick ? 'text-green-400'
-                                    : 'text-red-400'
+                                  const advCls = effectiveWinner != null
+                                    ? (effectiveWinner === advancePick ? 'text-green-400' : 'text-red-400')
+                                    : mStatus === 'eliminated'    ? 'text-red-400 line-through opacity-60'
+                                    : mStatus === 'advance-only'  ? 'text-amber-400'
+                                    : 'text-gray-500'
                                   return (
-                                    <span className={`text-[8px] truncate max-w-[4.5rem] ${cls}`}>
+                                    <span className={`text-[8px] truncate max-w-[4.5rem] ${advCls}`}>
                                       →{getFlag(advancePick)} {advancePick}
                                     </span>
                                   )
                                 })()}
+                                {mStatus === 'advance-only' && (
+                                  <span className="mt-0.5 text-[8px] font-bold text-amber-500 leading-tight">⚡10 max</span>
+                                )}
+                                {mStatus === 'eliminated' && (
+                                  <span className="mt-0.5 text-[8px] font-bold text-red-500/80 leading-tight">✗ 0 pts</span>
+                                )}
                               </div>
                             )
                           })}
