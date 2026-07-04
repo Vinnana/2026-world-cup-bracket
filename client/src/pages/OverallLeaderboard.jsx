@@ -120,7 +120,11 @@ export default function OverallLeaderboard() {
 
   // ── Live scoring ─────────────────────────────────────────────────────────────
   const userPicksMap = {}
-  for (const u of allPicksData?.users || []) userPicksMap[u.user_id] = u.picks || {}
+  const userBracketPicksMap = {}
+  for (const u of allPicksData?.users || []) {
+    userPicksMap[u.user_id]        = u.picks         || {}
+    userBracketPicksMap[u.user_id] = u.bracket_picks || {}
+  }
 
   const officialResults = allPicksData?.results || {}
 
@@ -135,6 +139,33 @@ export default function OverallLeaderboard() {
   const matchById = {}
   for (const m of allPicksData?.matches || []) matchById[m.id] = m
 
+  // parentsMap: for R16+ matches, which match's winner fills each slot
+  const parentsMap = {}
+  for (const m of allPicksData?.matches || []) {
+    parentsMap[m.id] = {
+      homeSrc: m.home?.win || null,
+      awaySrc: m.away?.win || null,
+      hasLose: !!(m.home?.lose || m.away?.lose),
+    }
+  }
+
+  // Returns true only if the user predicted the correct two teams for this R16+ match
+  function matchupCorrectFor(matchId, bracketPicks) {
+    const m      = matchById[matchId]
+    const result = officialResults[matchId]
+    if (!m || !result) return false
+    const isR32 = typeof m.home === 'string' && typeof m.away === 'string'
+    if (isR32) return true  // R32 matchup always correct
+    const p = parentsMap[matchId]
+    if (!p || p.hasLose) return false  // 3rd place — conservative, skip bonus
+    const predHome = p.homeSrc ? (bracketPicks[p.homeSrc] || null) : null
+    const predAway = p.awaySrc ? (bracketPicks[p.awaySrc] || null) : null
+    if (!predHome || !predAway) return false
+    const ah = result.home_team, aa = result.away_team
+    if (!ah || !aa) return false
+    return (predHome === ah && predAway === aa) || (predHome === aa && predAway === ah)
+  }
+
   const hasActiveLive = pendingMatches.some(([, s]) => s.status === 'live' || s.status === 'ht')
   const hasPending    = pendingMatches.length > 0
   const multiLive     = pendingMatches.length > 1
@@ -143,12 +174,18 @@ export default function OverallLeaderboard() {
   const liveBreakdownMap = {}
   if (locked && allPicksData && hasPending) {
     for (const entry of leaderboard) {
-      const picks = userPicksMap[entry.user_id] || {}
+      const picks        = userPicksMap[entry.user_id]        || {}
+      const bracketPicks = userBracketPicksMap[entry.user_id] || {}
       let bonus = 0
       const breakdown = []
       for (const [matchId, s] of pendingMatches) {
         const p = picks[matchId]
         if (p?.home_goals != null) {
+          const m    = matchById[matchId]
+          const isKo = m && m.round !== 'Group'
+          const isR32 = isKo && typeof m?.home === 'string' && typeof m?.away === 'string'
+          // Score bonus for R16+ only applies when the predicted matchup is correct
+          if (isKo && !isR32 && !matchupCorrectFor(matchId, bracketPicks)) continue
           const pts = scoreMatchClient(p, s.home_score, s.away_score)
           bonus += pts
           breakdown.push({ id: matchId, pts, status: s.status })
