@@ -399,6 +399,9 @@ export default function AllPicks() {
   const [loading,           setLoading]           = useState(true)
   const [error,             setError]             = useState('')
 
+  // Must be before any early returns — hooks cannot be called conditionally
+  const parentsMap = useMemo(() => buildParentsMap(knockoutStructure), [knockoutStructure])
+
   useEffect(() => {
     // Fetch tournament structure once (non-blocking — matchup analysis degrades gracefully)
     tournamentApi.data()
@@ -477,9 +480,6 @@ export default function AllPicks() {
   // Keep legacy aliases used inside the two view sections below
   const upcomingGroupMatches  = upcomingMatches
   const completedGroupMatches = completedMatches
-
-  // ── Matchup analysis (R16+, upcoming only) ─────────────────────────────────
-  const parentsMap = useMemo(() => buildParentsMap(knockoutStructure), [knockoutStructure])
 
   // ── Live scoring computation ────────────────────────────────────────────────
   // Pending: ESPN has a score but admin hasn't confirmed yet
