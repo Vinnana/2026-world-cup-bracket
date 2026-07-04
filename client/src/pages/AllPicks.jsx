@@ -661,17 +661,22 @@ export default function AllPicks() {
                             const pts = isKo
                               ? (resultIn || effectiveWinner ? (u.knockout_breakdown?.[m.id]?.total ?? (advanceWrong ? 0 : null)) : null)
                               : calcPts(pick, result)
-                            const livePts = !resultIn && live?.home_score != null && hasPick
+
+                            // Matchup status — computed before livePts so we can gate live scoring
+                            const mStatus = (isKo && m.round !== 'R32' && !resultIn && !effectiveWinner)
+                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
+                              : null
+
+                            // Live score bonus only applies when matchup is correct.
+                            // Suppress for wrong-matchup KO tiles so live scores don't show
+                            // phantom points that will never be awarded.
+                            const matchupOkForScore = !isKo || m.round === 'R32' || mStatus === 'correct' || mStatus === null
+                            const livePts = !resultIn && live?.home_score != null && hasPick && matchupOkForScore
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
                               : null
                             const showPts = (resultIn || effectiveWinner) ? pts : livePts
                             const isMePick = u.user_id === user?.id
                             const label = getRealName(u.username) || displayName(u.username)
-
-                            // Matchup status for pre-kick R16+ tiles
-                            const mStatus = (isKo && m.round !== 'R32' && !resultIn && !effectiveWinner)
-                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
-                              : null
 
                             const tileClass = mStatus === 'eliminated' ? 'bg-red-900/50 border-red-700/50'
                               : mStatus === 'advance-only'             ? 'bg-amber-900/25 border-amber-600/40'
