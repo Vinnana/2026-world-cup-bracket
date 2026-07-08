@@ -79,7 +79,9 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
 
   // Cache key includes knockout winners so invalidation fires when a KO result is recorded
   const koWinnerStr = knockoutResults.filter(r => r.winner).map(r => `${r.match_id}:${r.winner}`).sort().join('|')
-  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr + '||GR:' + groupHash
+  // Include KO score picks count so cache busts when picks change (score picks now feed advance inference)
+  const koPicksHash = allPicks.filter(p => !GROUP_IDS.has(p.match_id)).length
+  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr + '||GR:' + groupHash + '||KP:' + koPicksHash
   if (_winPctCache?.hash === hash) return _winPctCache.winPcts
 
   const uids = players.map(u => u.id)
@@ -207,9 +209,17 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
           }
         }
 
-        // Advancement bonus: +10 if bracket pick == simulated winner
+        // Advancement bonus: +10 if bracket pick == simulated winner.
+        // Fall back to score pick for implied advancement when no explicit bracket pick exists:
+        // a non-draw score pick implies the player thinks the leading side advances.
         if (isKnockout && simWinner) {
-          const bp = bracketPicks[uid]?.[match.id]
+          let bp = bracketPicks[uid]?.[match.id]
+          if (!bp && homeTeam && awayTeam) {
+            const sp = pickLookup[uid]?.[match.id]
+            if (sp?.home_goals != null && sp?.away_goals != null && sp.home_goals !== sp.away_goals) {
+              bp = sp.home_goals > sp.away_goals ? homeTeam : awayTeam
+            }
+          }
           if (bp && bp === simWinner) totals[uid] += 10
         }
       }
