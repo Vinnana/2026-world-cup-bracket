@@ -43,7 +43,7 @@ function ptsLabel(pts) {
 }
 
 // ── Single knockout match card ────────────────────────────────────────────────
-function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement, eliminatedTeams }) {
+function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement, eliminatedTeams, matchupOk = true }) {
   const awayRef = useRef(null)
 
   const [homeVal, setHomeVal] = useState(scorePick?.home_goals ?? '')
@@ -72,6 +72,7 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
 
   function calcPts() {
     if (!resultExists || homeVal === '' || awayVal === '') return null
+    if (!matchupOk) return 0   // R16+ wrong/unverifiable matchup → 0 pts
     const ph = parseInt(homeVal), pa = parseInt(awayVal)
     const rh = result.home_goals, ra = result.away_goals
     if (isNaN(ph) || isNaN(pa)) return null
@@ -299,6 +300,22 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                 const top     = bCardTop(roundIdx, matchIdx)
                 const teams   = resolvedTeams[id] || {}
                 const isFinal = roundIdx === BRACKET_ORDER.length - 1
+
+                // Matchup gate: R32/Third always OK; R16+ requires predicted == actual teams
+                const isR32orThird = m.round === 'R32' || m.round === 'Third'
+                let matchupOk = true
+                if (!isR32orThird) {
+                  const actual = matchResults[id]
+                  if (!actual?.home_team || !actual?.away_team || !teams.home || !teams.away) {
+                    matchupOk = false
+                  } else {
+                    matchupOk = (
+                      (teams.home === actual.home_team && teams.away === actual.away_team) ||
+                      (teams.home === actual.away_team && teams.away === actual.home_team)
+                    )
+                  }
+                }
+
                 return (
                   <div key={id} className="absolute" style={{ top, left: 0, width: COL_W, height: CARD_H }}>
                     {/* Gold ring around the Final card */}
@@ -315,6 +332,7 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                         advancePick={knockoutPicks[id]}
                         onPickAdvancement={onPickAdvancement}
                         eliminatedTeams={eliminatedTeams}
+                        matchupOk={matchupOk}
                       />
                     </div>
                   </div>
