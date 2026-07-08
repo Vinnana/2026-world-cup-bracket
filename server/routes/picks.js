@@ -79,9 +79,12 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
 
   // Cache key includes knockout winners so invalidation fires when a KO result is recorded
   const koWinnerStr = knockoutResults.filter(r => r.winner).map(r => `${r.match_id}:${r.winner}`).sort().join('|')
-  // Include KO score picks count so cache busts when picks change (score picks now feed advance inference)
+  // Include KO score picks count + bracket picks fingerprint so cache busts on any change
   const koPicksHash = allPicks.filter(p => !GROUP_IDS.has(p.match_id)).length
-  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr + '||GR:' + groupHash + '||KP:' + koPicksHash
+  const bracketHash = Object.entries(bracketPicks)
+    .flatMap(([uid, picks]) => Object.entries(picks).map(([mid, team]) => `${uid}:${mid}=${team}`))
+    .sort().join('|')
+  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr + '||GR:' + groupHash + '||KP:' + koPicksHash + '||BP:' + bracketHash
   if (_winPctCache?.hash === hash) return _winPctCache.winPcts
 
   const uids = players.map(u => u.id)
@@ -219,34 +222,21 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
 
         // ── Scoreline bonus ────────────────────────────────────────────────
         if (sp?.home_goals != null) {
-          if (!isKnockout || match.round === 'R32') {
-            // Group and R32: matchup is always known, score directly.
+          if (!isKnockout || match.round === 'R32' || match.round === 'Third') {
+            // Group, R32, Third: teams are determined externally — matchup always
+            // counts (mirrors actual knockoutScoring.js behaviour). Score directly.
             totals[uid] += scoreMatch(sp, { home_goals: rh, away_goals: ra })
           } else if (homeTeam && awayTeam) {
-            // R16/QF/SF/Final/Third: scoreline only counts when the predicted
-            // matchup (who the player expected in each slot) matches simulation.
+            // R16/QF/SF/Final: scoreline only if predicted matchup matches sim.
+            // predHome/predAway = who the player expected in each slot (via the
+            // preceding match they predicted: bracketPicks[uid][match.home.win]).
             let predHome = null, predAway = null
-
-            if (match.round === 'Third') {
-              // Third home/away = losers of m101/m102.
-              // Player's predicted loser = the predicted m101/m102 participant they did NOT pick to win.
-              const ph101 = bracketPicks[uid]?.['m97'],  pa101 = bracketPicks[uid]?.['m98']
-              const pw101 = bracketPicks[uid]?.['m101']
-              predHome = (pw101 === ph101) ? pa101 : (pw101 === pa101) ? ph101 : null
-
-              const ph102 = bracketPicks[uid]?.['m99'],  pa102 = bracketPicks[uid]?.['m100']
-              const pw102 = bracketPicks[uid]?.['m102']
-              predAway = (pw102 === ph102) ? pa102 : (pw102 === pa102) ? ph102 : null
-            } else {
-              // R16/QF/SF/Final: home/away sides come from {win: 'mX'} predecessors.
-              if (typeof match.home === 'object' && match.home.win) {
-                predHome = bracketPicks[uid]?.[match.home.win] || null
-              }
-              if (typeof match.away === 'object' && match.away.win) {
-                predAway = bracketPicks[uid]?.[match.away.win] || null
-              }
+            if (typeof match.home === 'object' && match.home.win) {
+              predHome = bracketPicks[uid]?.[match.home.win] || null
             }
-
+            if (typeof match.away === 'object' && match.away.win) {
+              predAway = bracketPicks[uid]?.[match.away.win] || null
+            }
             if (predHome && predAway) {
               if (predHome === homeTeam && predAway === awayTeam) {
                 totals[uid] += scoreMatch(sp, { home_goals: rh, away_goals: ra })
