@@ -57,10 +57,10 @@ function _scoresHash(allScores) {
  *
  * For each simulated universe:
  *  - Group matches: Poisson(1.35) scoreline -> 10/6/4/0 pts
- *  - Knockout R32: same scoreline bonus + +10 advance if bracket pick == simulated winner
- *  - Knockout R16+: +10 advance if bracket pick == simulated winner (scoreline skipped
- *    because matchup-correct check is too complex to simulate inline)
- *  - Bracket chain: simulated R32 winners feed into R16 matchups, etc.
+ *  - Knockout R32: scoreline bonus + +10 advance if bracket pick == simulated winner
+ *  - Knockout R16+: scoreline bonus (only if predicted matchup == simulated matchup, mirroring
+ *    the real scoring rule) + +10 advance if bracket pick == simulated winner
+ *  - Bracket chain: simulated winners/losers feed into later-round matchups (incl. Third place)
  *  - Draws in knockout: coin-flip (penalty shootout)
  *  - Eliminated teams: actual knockout winners seeded from wc_match_results + goal
  *    derivation so that picks on eliminated teams correctly score 0 in all future rounds
@@ -162,23 +162,31 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
     const totals = {}
     for (const uid of uids) totals[uid] = computedScores[uid]?.total || 0
 
-    // Track simulated winners so later rounds can resolve teams
+    // Track simulated winners AND losers (losers needed for Third place teams)
     const simWinners = {}
+    const simLosers  = {}
     for (const [mid, info] of Object.entries(knownTeams)) {
-      if (info.winner) simWinners[mid] = info.winner
+      if (info.winner) {
+        simWinners[mid] = info.winner
+        if (info.home_team && info.away_team) {
+          simLosers[mid] = info.winner === info.home_team ? info.away_team : info.home_team
+        }
+      }
     }
 
     for (const match of pending) {
       const isKnockout = match.round !== 'Group'
 
-      // Resolve actual team names (R16+ depends on simulated R32 winners)
+      // Resolve actual team names for this match
       let homeTeam = knownTeams[match.id]?.home_team || null
       let awayTeam = knownTeams[match.id]?.away_team || null
-      if (!homeTeam && isKnockout && typeof match.home === 'object' && match.home?.win) {
-        homeTeam = simWinners[match.home.win] || null
+      if (!homeTeam && isKnockout && typeof match.home === 'object') {
+        if (match.home.win)  homeTeam = simWinners[match.home.win]  || null
+        if (match.home.lose) homeTeam = simLosers[match.home.lose]  || null
       }
-      if (!awayTeam && isKnockout && typeof match.away === 'object' && match.away?.win) {
-        awayTeam = simWinners[match.away.win] || null
+      if (!awayTeam && isKnockout && typeof match.away === 'object') {
+        if (match.away.win)  awayTeam = simWinners[match.away.win]  || null
+        if (match.away.lose) awayTeam = simLosers[match.away.lose]  || null
       }
       // R32 fallback: resolve '1A'/'2B' slots from group results when ESPN hasn't stored teams yet
       if (!homeTeam && match.round === 'R32' && typeof match.home === 'string') {
@@ -198,28 +206,61 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
         else if (ra > rh)     simWinner = awayTeam
         else if (isKnockout)  simWinner = Math.random() < 0.5 ? homeTeam : awayTeam
       }
-      if (simWinner) simWinners[match.id] = simWinner
+      if (simWinner) {
+        simWinners[match.id] = simWinner
+        // Track the loser for Third place team resolution
+        if (homeTeam && awayTeam) {
+          simLosers[match.id] = simWinner === homeTeam ? awayTeam : homeTeam
+        }
+      }
 
       for (const uid of uids) {
-        // Scoreline bonus: group always; R32 always; R16+ skip (matchup-correct)
-        if (!isKnockout || match.round === 'R32') {
-          const pick = pickLookup[uid]?.[match.id]
-          if (pick?.home_goals != null) {
-            totals[uid] += scoreMatch(pick, { home_goals: rh, away_goals: ra })
+        const sp = pickLookup[uid]?.[match.id]
+
+        // ── Scoreline bonus ────────────────────────────────────────────────
+        if (sp?.home_goals != null) {
+          if (!isKnockout || match.round === 'R32') {
+            // Group and R32: matchup is always known, score directly.
+            totals[uid] += scoreMatch(sp, { home_goals: rh, away_goals: ra })
+          } else if (homeTeam && awayTeam) {
+            // R16/QF/SF/Final/Third: scoreline only counts when the predicted
+            // matchup (who the player expected in each slot) matches simulation.
+            let predHome = null, predAway = null
+
+            if (match.round === 'Third') {
+              // Third home/away = losers of m101/m102.
+              // Player's predicted loser = the predicted m101/m102 participant they did NOT pick to win.
+              const ph101 = bracketPicks[uid]?.['m97'],  pa101 = bracketPicks[uid]?.['m98']
+              const pw101 = bracketPicks[uid]?.['m101']
+              predHome = (pw101 === ph101) ? pa101 : (pw101 === pa101) ? ph101 : null
+
+              const ph102 = bracketPicks[uid]?.['m99'],  pa102 = bracketPicks[uid]?.['m100']
+              const pw102 = bracketPicks[uid]?.['m102']
+              predAway = (pw102 === ph102) ? pa102 : (pw102 === pa102) ? ph102 : null
+            } else {
+              // R16/QF/SF/Final: home/away sides come from {win: 'mX'} predecessors.
+              if (typeof match.home === 'object' && match.home.win) {
+                predHome = bracketPicks[uid]?.[match.home.win] || null
+              }
+              if (typeof match.away === 'object' && match.away.win) {
+                predAway = bracketPicks[uid]?.[match.away.win] || null
+              }
+            }
+
+            if (predHome && predAway) {
+              if (predHome === homeTeam && predAway === awayTeam) {
+                totals[uid] += scoreMatch(sp, { home_goals: rh, away_goals: ra })
+              } else if (predHome === awayTeam && predAway === homeTeam) {
+                // Reversed orientation — flip pick to match actual sides
+                totals[uid] += scoreMatch(sp, { home_goals: ra, away_goals: rh })
+              }
+            }
           }
         }
 
-        // Advancement bonus: +10 if bracket pick == simulated winner.
-        // Fall back to score pick for implied advancement when no explicit bracket pick exists:
-        // a non-draw score pick implies the player thinks the leading side advances.
+        // ── Advancement bonus: +10 if bracket pick == simulated winner ─────
         if (isKnockout && simWinner) {
-          let bp = bracketPicks[uid]?.[match.id]
-          if (!bp && homeTeam && awayTeam) {
-            const sp = pickLookup[uid]?.[match.id]
-            if (sp?.home_goals != null && sp?.away_goals != null && sp.home_goals !== sp.away_goals) {
-              bp = sp.home_goals > sp.away_goals ? homeTeam : awayTeam
-            }
-          }
+          const bp = bracketPicks[uid]?.[match.id]
           if (bp && bp === simWinner) totals[uid] += 10
         }
       }
