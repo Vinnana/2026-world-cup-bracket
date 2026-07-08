@@ -73,13 +73,33 @@ function _scoresHash(allScores) {
  * @param {Array}  knockoutResults db.getKnockoutResults() -- for penalty-shootout winners
  */
 function computeWinPcts(allPicks, allScores, players, computedScores, bracketPicks = {}, knockoutResults = []) {
+  // Load group results once — used for both cache hashing and R32 slot resolution.
+  const groupRows = db.getGroupResults()
+  const groupHash = groupRows.map(r => `${r.match_id}:${r.home_team || ''}:${r.away_team || ''}`).sort().join('|')
+
   // Cache key includes knockout winners so invalidation fires when a KO result is recorded
   const koWinnerStr = knockoutResults.filter(r => r.winner).map(r => `${r.match_id}:${r.winner}`).sort().join('|')
-  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr
+  const hash = _scoresHash(allScores) + '||KO:' + koWinnerStr + '||GR:' + groupHash
   if (_winPctCache?.hash === hash) return _winPctCache.winPcts
 
   const uids = players.map(u => u.id)
   if (uids.length === 0) return {}
+
+  // Build group results map for R32 slot resolution when ESPN hasn't yet stored actual teams.
+  // '1A' → group A first place; '2B' → group B second; '3RD:*' → too complex, left null.
+  const _groupResultsForSim = {}
+  for (const row of groupRows) {
+    if (row.match_id.startsWith('group_result_')) {
+      const g = row.match_id.replace('group_result_', '')
+      _groupResultsForSim[g] = { first: row.home_team || null, second: row.away_team || null }
+    }
+  }
+  function resolveR32Slot(slot) {
+    if (!slot || typeof slot !== 'string' || slot.startsWith('3RD:')) return null
+    const gr = _groupResultsForSim[slot[1]]
+    if (!gr) return null
+    return slot[0] === '1' ? gr.first : slot[0] === '2' ? gr.second : null
+  }
 
   // Score pick lookup: pickLookup[uid][matchId]
   const pickLookup = {}
@@ -157,6 +177,13 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
       }
       if (!awayTeam && isKnockout && typeof match.away === 'object' && match.away?.win) {
         awayTeam = simWinners[match.away.win] || null
+      }
+      // R32 fallback: resolve '1A'/'2B' slots from group results when ESPN hasn't stored teams yet
+      if (!homeTeam && match.round === 'R32' && typeof match.home === 'string') {
+        homeTeam = resolveR32Slot(match.home)
+      }
+      if (!awayTeam && match.round === 'R32' && typeof match.away === 'string') {
+        awayTeam = resolveR32Slot(match.away)
       }
 
       const rh = _rngPoisson(_GOAL_LAMBDA)
