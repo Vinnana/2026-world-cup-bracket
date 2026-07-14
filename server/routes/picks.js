@@ -249,7 +249,7 @@ function computeWinPcts(allPicks, allScores, players, computedScores, bracketPic
         }
 
         // ── Advancement bonus: +10 if bracket pick == simulated winner ─────
-        if (isKnockout && simWinner) {
+        if (isKnockout && simWinner && match.round !== 'Third') {
           const bp = bracketPicks[uid]?.[match.id]
           if (bp && bp === simWinner) totals[uid] += 10
         }

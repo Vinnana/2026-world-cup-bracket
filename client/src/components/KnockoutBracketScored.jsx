@@ -358,7 +358,7 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                           awayTeam={thirdTeams.away || null}
                           advancePick={knockoutPicks['m103']}
                           onPickAdvancement={onPickAdvancement}
-                          eliminatedTeams={eliminatedTeams}
+                          eliminatedTeams={new Set()}
                         />
                       </div>
                     </div>

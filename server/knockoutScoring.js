@@ -57,9 +57,9 @@ export function scoreKnockoutForUser(bracket, scorePicksByMatch, actuals) {
     const act = actuals[m.id]
     if (!act || !act.winner) continue   // match not decided yet → no points
 
-    // ── Advance points ───────────────────────────────────────────────────────
+    // ── Advance points (not awarded for Third Place) ─────────────────────────
     const predWinner = knockoutPicks[m.id] || null
-    const advancePts = predWinner && predWinner === act.winner ? 10 : 0
+    const advancePts = m.round !== 'Third' && predWinner && predWinner === act.winner ? 10 : 0
 
     // ── Scoreline bonus (matchup-gated) ──────────────────────────────────────
     let scorePts = 0
