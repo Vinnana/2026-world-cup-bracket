@@ -1951,31 +1951,16 @@ export default function Admin() {
                                   <div key={matchId} className="bg-gray-800/50 rounded-lg p-2.5 border border-gray-700/60">
                                     <div className="text-[10px] text-gray-500 mb-1.5">{matchId} {homeTeam ? `· ${homeTeam} v ${awayTeam}` : ''}</div>
                                     <div className="flex gap-1.5">
-                                    {homeTeam ? (
-                                      <select
-                                        className="input text-xs py-1 flex-1"
-                                        value={currentPick}
-                                        onChange={e => setEditBracketForm(prev => ({
-                                          ...prev,
-                                          knockout: { ...prev.knockout, [matchId]: e.target.value }
-                                        }))}
-                                      >
-                                        <option value="">— no pick —</option>
-                                        <option value={homeTeam}>{homeTeam}</option>
-                                        <option value={awayTeam}>{awayTeam}</option>
-                                      </select>
-                                    ) : (
                                       <input
                                         className="input text-xs py-1 flex-1"
                                         list="koTeamNames"
-                                        placeholder="Team name…"
+                                        placeholder={homeTeam ? `${homeTeam} / ${awayTeam}` : 'Team name…'}
                                         value={currentPick}
                                         onChange={e => setEditBracketForm(prev => ({
                                           ...prev,
                                           knockout: { ...prev.knockout, [matchId]: e.target.value }
                                         }))}
                                       />
-                                    )}
                                     <button
                                       onClick={() => handlePatchKnockoutPick(matchId, currentPick)}
                                       disabled={!currentPick}
