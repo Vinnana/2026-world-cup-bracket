@@ -115,21 +115,21 @@ function getMatchupStatus(match, result, userBracketPicks, parentsMap, allResult
   if (isR32) return 'r32'  // R32 matchup is always correct (teams come from group stage)
 
   // Third Place: advance pts for correct winner + score bonus gated by predicted SF losers.
-  // Same structure as R16+: 'correct' → full 20 pts; 'advance-only' → +10 max; 'eliminated' → 0.
+  // Advance pick must be in the actual match to earn any points — if you picked a team
+  // that isn't playing (e.g. Brazil), you get 0 advance pts AND 0 score bonus.
   if (match.round === 'Third') {
     const tp3Advance = userBracketPicks?.[match.id]
-    const inMatch3 = !!tp3Advance && (tp3Advance === actualHome || tp3Advance === actualAway)
+    if (!tp3Advance) return 'no-pick'
+    const inMatch3 = tp3Advance === actualHome || tp3Advance === actualAway
+    if (!inMatch3) return 'eliminated'  // advance pick not in match → 0 pts
+    // Advance pick is one of the actual teams. Check SF loser predictions for score bonus.
     const pred1 = predictedSFLoser('m101', allResults?.['m101'], userBracketPicks)
     const pred2 = predictedSFLoser('m102', allResults?.['m102'], userBracketPicks)
-    if (!pred1 || !pred2) {
-      if (!tp3Advance) return 'no-pick'
-      return inMatch3 ? 'advance-only' : 'eliminated'
-    }
+    if (!pred1 || !pred2) return 'advance-only'
     const matchupCorrect =
       (pred1 === actualHome && pred2 === actualAway) ||
       (pred1 === actualAway && pred2 === actualHome)
-    if (matchupCorrect) return 'correct'
-    return inMatch3 ? 'advance-only' : 'eliminated'
+    return matchupCorrect ? 'correct' : 'advance-only'
   }
 
   if (!advancePick) return 'no-pick'
