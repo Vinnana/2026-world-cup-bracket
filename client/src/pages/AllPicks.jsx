@@ -100,6 +100,7 @@ function getMatchupStatus(match, result, userBracketPicks, parentsMap) {
   const isR32 = typeof match.home === 'string' && typeof match.away === 'string'
 
   if (isR32) return 'r32'  // R32 matchup is always correct (teams come from group stage)
+  if (match.round === 'Third') return 'r32'  // 3rd-place scoring is always-correct like R32
 
   if (!advancePick) return 'no-pick'
 
@@ -616,8 +617,19 @@ export default function AllPicks() {
                             </span>
                           )}
                         </div>
+                        {/* ── 3rd-place banner: score bonus always applies ── */}
+                        {isKo && m.round === 'Third' && !resultIn && (
+                          <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-900/20 border border-amber-700/30 text-[11px]">
+                            <span className="text-amber-300 flex items-center gap-1">
+                              <span>⚡</span>
+                              <span className="font-medium">Score bonus applies to all — 3rd place always counts</span>
+                            </span>
+                            <span className="text-amber-400 font-bold shrink-0">Max +10 pts</span>
+                          </div>
+                        )}
+
                         {/* ── Matchup insight banner (R16+ only, before kick-off) ── */}
-                        {isKo && m.round !== 'R32' && !resultIn && (() => {
+                        {isKo && m.round !== 'R32' && m.round !== 'Third' && !resultIn && (() => {
                           const statuses = users.map(u =>
                             getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
                           )
@@ -675,15 +687,15 @@ export default function AllPicks() {
                               ? (resultIn || effectiveWinner ? (u.knockout_breakdown?.[m.id]?.total ?? (advanceWrong ? 0 : null)) : null)
                               : calcPts(pick, result)
 
-                            // Matchup status — computed before livePts so we can gate live scoring
-                            const mStatus = (isKo && m.round !== 'R32' && !resultIn && !effectiveWinner)
+                            // Matchup status — computed before livePts so we can gate live scoring.
+                            // R32 and Third Place are always-correct; skip status gating for those.
+                            const mStatus = (isKo && m.round !== 'R32' && m.round !== 'Third' && !resultIn && !effectiveWinner)
                               ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
                               : null
 
                             // Live score bonus only applies when matchup is correct.
-                            // Suppress for wrong-matchup KO tiles so live scores don't show
-                            // phantom points that will never be awarded.
-                            const matchupOkForScore = !isKo || m.round === 'R32' || mStatus === 'correct' || mStatus === null
+                            // Third Place is always-correct (like R32) — never suppress its live score.
+                            const matchupOkForScore = !isKo || m.round === 'R32' || m.round === 'Third' || mStatus === 'correct' || mStatus === null
                             const livePts = !resultIn && live?.home_score != null && hasPick && matchupOkForScore
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
                               : null
