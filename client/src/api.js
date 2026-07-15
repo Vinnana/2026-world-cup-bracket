@@ -179,6 +179,10 @@ export const admin = {
   setUserBracket: (user_id, picks) =>
     api.post(`/admin/user-bracket/${user_id}`, { picks }),
 
+  /** Patch specific knockout picks without touching anything else */
+  patchUserKnockoutPicks: (user_id, patches) =>
+    api.patch(`/admin/user-bracket/${user_id}/knockout`, { patches }),
+
   deleteUser: (user_id) =>
     api.delete(`/admin/users/${user_id}`),
 

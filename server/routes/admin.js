@@ -329,6 +329,24 @@ router.post('/user-bracket/:user_id', requireAdmin, (req, res) => {
   res.json({ success: true })
 })
 
+// Patch only specific knockout advancement picks without touching anything else
+router.patch('/user-bracket/:user_id/knockout', requireAdmin, (req, res) => {
+  const user_id = Number(req.params.user_id)
+  if (!user_id) return res.status(400).json({ error: 'Invalid user_id' })
+  const user = db.getUserById(user_id)
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const { patches } = req.body // { matchId: teamName, ... }
+  if (!patches || typeof patches !== 'object') return res.status(400).json({ error: 'patches object required' })
+
+  const row = db.getBracketByUserId(user_id)
+  let existing = { groups: {}, knockout: {} }
+  if (row?.picks) { try { existing = JSON.parse(row.picks) } catch {} }
+
+  existing.knockout = { ...existing.knockout, ...patches }
+  db.upsertBracket(user_id, JSON.stringify(existing))
+  res.json({ success: true, knockout: existing.knockout })
+})
+
 // Create a user account on behalf of a participant
 router.post('/create-user', requireAdmin, async (req, res) => {
   const { username, password } = req.body

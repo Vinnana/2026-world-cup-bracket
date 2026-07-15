@@ -643,6 +643,21 @@ export default function Admin() {
     }
   }
 
+  async function handlePatchKnockoutPick(matchId, team) {
+    if (!editUser || !team) return
+    try {
+      const r = await admin.patchUserKnockoutPicks(editUser.id, { [matchId]: team })
+      setEditBracketForm(prev => ({ ...prev, knockout: { ...prev.knockout, [matchId]: team } }))
+      setEditPicksData(prev => ({
+        ...prev,
+        bracket: { ...prev.bracket, knockout: { ...(prev.bracket?.knockout || {}), [matchId]: team } },
+      }))
+      flashEdit(`✓ ${matchId} → ${team}`)
+    } catch (err) {
+      flashEdit(err.response?.data?.error || 'Patch failed', true)
+    }
+  }
+
   // ── CSV export ──────────────────────────────────────────────────────────────
   const [csvLoading, setCsvLoading] = useState(false)
   const [csvMsg,     setCsvMsg]     = useState('')
@@ -1935,9 +1950,10 @@ export default function Admin() {
                                 return (
                                   <div key={matchId} className="bg-gray-800/50 rounded-lg p-2.5 border border-gray-700/60">
                                     <div className="text-[10px] text-gray-500 mb-1.5">{matchId} {homeTeam ? `· ${homeTeam} v ${awayTeam}` : ''}</div>
+                                    <div className="flex gap-1.5">
                                     {homeTeam ? (
                                       <select
-                                        className="input text-xs py-1 w-full"
+                                        className="input text-xs py-1 flex-1"
                                         value={currentPick}
                                         onChange={e => setEditBracketForm(prev => ({
                                           ...prev,
@@ -1950,7 +1966,7 @@ export default function Admin() {
                                       </select>
                                     ) : (
                                       <input
-                                        className="input text-xs py-1 w-full"
+                                        className="input text-xs py-1 flex-1"
                                         list="koTeamNames"
                                         placeholder="Team name…"
                                         value={currentPick}
@@ -1960,6 +1976,13 @@ export default function Admin() {
                                         }))}
                                       />
                                     )}
+                                    <button
+                                      onClick={() => handlePatchKnockoutPick(matchId, currentPick)}
+                                      disabled={!currentPick}
+                                      className="px-2 py-1 rounded text-[10px] font-bold bg-green-700 text-white hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                                      title={`Save ${matchId} pick immediately`}
+                                    >Set</button>
+                                    </div>
                                   </div>
                                 )
                               })}
