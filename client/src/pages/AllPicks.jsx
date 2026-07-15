@@ -361,8 +361,8 @@ function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, has
                             </span>
                           )}
                         </div>
-                        {/* Line 2: advancement pick */}
-                        {advancePick && (
+                        {/* Line 2: advancement pick (not shown for 3rd place — no advance points) */}
+                        {advancePick && round !== 'Third' && (
                           <div className="flex items-center gap-1 mt-0.5 pl-7">
                             <span className="text-gray-600 text-[10px]">advances:</span>
                             <span className={`text-[10px] font-semibold ${
