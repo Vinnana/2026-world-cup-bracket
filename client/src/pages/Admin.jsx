@@ -543,6 +543,7 @@ export default function Admin() {
     { key: 'R16',   label: 'Round of 16',   ids: Array.from({length:8},  (_,i) => `m${89+i}`) },
     { key: 'QF',    label: 'Quarter-finals',ids: Array.from({length:4},  (_,i) => `m${97+i}`) },
     { key: 'SF',    label: 'Semi-finals',   ids: ['m101','m102'] },
+    { key: 'Third', label: '3rd Place',     ids: ['m103'] },
     { key: 'Final', label: 'Final',         ids: ['m104'] },
   ]
   const scoreIsGroup = scoreRound.startsWith('group_')

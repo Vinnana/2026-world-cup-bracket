@@ -8,9 +8,10 @@
  *
  * R32: the two teams are known before picking, so the matchup is always
  *      "correct" — the scoreline bonus applies as long as a score pick exists.
- * R16→Final: the matchup is the participant's own bracket prediction (the
- *      winners they sent forward). The scoreline bonus counts only if BOTH
- *      predicted teams match the two teams that actually played.
+ * R16→Final (including Third Place): the matchup is the participant's own bracket
+ *      prediction. For Third Place the predicted matchup is the two SF losers the
+ *      participant sent forward. The scoreline bonus counts only if BOTH predicted
+ *      teams match the two teams that actually played.
  *
  * Advancement comes from the participant's bracket (`brackets.picks.knockout`);
  * the scoreline comes from their score picks (`score_picks`). The two are scored
@@ -52,34 +53,46 @@ export function scoreKnockoutForUser(bracket, scorePicksByMatch, actuals) {
   const knockoutPicks = bracket?.knockout || {}
   let total = 0
   const breakdown = {}
+  // Built incrementally as we iterate; needed so {lose: 'mX'} references (Third Place)
+  // can resolve to the participant's predicted SF matchup before the SF result is official.
+  const resolvedTeams = {}  // mId → { home: predicted, away: predicted }
 
   for (const m of KNOCKOUT) {
+    // Resolve predicted teams for this match and store them so later matches
+    // (especially Third Place with {lose} refs) can look them up.
+    // Must happen before the early-continue so SF entries are populated even
+    // when the SF result isn't in yet.
+    const predHome = resolvePredictedSide(m.home, knockoutPicks, resolvedTeams)
+    const predAway = resolvePredictedSide(m.away, knockoutPicks, resolvedTeams)
+    if (predHome || predAway) {
+      resolvedTeams[m.id] = { home: predHome, away: predAway }
+    }
+
     const act = actuals[m.id]
     if (!act || !act.winner) continue   // match not decided yet → no points
 
-    // ── Advance points (not awarded for Third Place) ─────────────────────────
+    // ── Advance points ───────────────────────────────────────────────────────
     const predWinner = knockoutPicks[m.id] || null
-    const advancePts = m.round !== 'Third' && predWinner && predWinner === act.winner ? 10 : 0
+    const advancePts = predWinner && predWinner === act.winner ? 10 : 0
 
-    // ── Scoreline bonus (matchup-gated) ──────────────────────────────────────
+    // ── Scoreline bonus ───────────────────────────────────────────────────────
+    // R32: teams come from group stage → matchup always correct.
+    // R16 / QF / SF / Third Place / Final: matchup-gated; Third Place uses {lose}
+    // resolution so the predicted matchup is the participant's predicted SF losers.
     let scorePts = 0
     const pick = scorePicksByMatch[m.id]
     const resultKnown = act.home_goals != null && act.away_goals != null
     if (pick && pick.home_goals != null && pick.away_goals != null && resultKnown) {
-      if (m.round === 'R32' || m.round === 'Third') {
-        // Teams determined externally → matchup always correct, pick in actual orientation.
+      if (m.round === 'R32') {
         scorePts = scoreMatch(pick, act) || 0
       } else {
-        const predHome = resolvePredictedSide(m.home, knockoutPicks)
-        const predAway = resolvePredictedSide(m.away, knockoutPicks)
         if (predHome === act.home_team && predAway === act.away_team) {
           scorePts = scoreMatch(pick, act) || 0
         } else if (predHome === act.away_team && predAway === act.home_team) {
-          // Same two teams but opposite orientation → flip the pick to match actual sides.
+          // Same two teams, opposite orientation → flip the pick to match actual sides.
           scorePts = scoreMatch({ home_goals: pick.away_goals, away_goals: pick.home_goals }, act) || 0
-        } else {
-          scorePts = 0   // wrong matchup → no scoreline points
         }
+        // else: wrong matchup → scorePts stays 0
       }
     }
 
