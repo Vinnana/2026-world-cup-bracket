@@ -90,8 +90,21 @@ function buildParentsMap(knockout) {
   return map
 }
 
-// Returns 'correct' | 'advance-only' | 'eliminated' | 'no-pick' | 'r32'
-function getMatchupStatus(match, result, userBracketPicks, parentsMap) {
+// Determine what team a user predicted as the loser of a given SF match.
+// Uses the actual SF teams so we can tell which side the user's winner pick came from.
+function predictedSFLoser(sfMatchId, sfResult, userBracketPicks) {
+  if (!sfResult?.home_team || !sfResult?.away_team) return null
+  const pick = userBracketPicks?.[sfMatchId]
+  if (!pick) return null
+  if (pick === sfResult.home_team) return sfResult.away_team
+  if (pick === sfResult.away_team) return sfResult.home_team
+  // User's SF pick isn't one of the actual SF teams → bracket was disconnected from reality
+  return null
+}
+
+// Returns 'correct' | 'advance-only' | 'eliminated' | 'no-pick' | 'r32' | 'unknown'
+// allResults: the full results map (needed for Third Place {lose} resolution)
+function getMatchupStatus(match, result, userBracketPicks, parentsMap, allResults) {
   const actualHome = result?.home_team
   const actualAway = result?.away_team
   if (!actualHome || !actualAway) return 'unknown'
@@ -100,7 +113,17 @@ function getMatchupStatus(match, result, userBracketPicks, parentsMap) {
   const isR32 = typeof match.home === 'string' && typeof match.away === 'string'
 
   if (isR32) return 'r32'  // R32 matchup is always correct (teams come from group stage)
-  if (match.round === 'Third') return 'r32'  // 3rd-place scoring is always-correct like R32
+
+  // Third Place: advance pts for correct winner + score bonus gated by predicted SF losers.
+  if (match.round === 'Third') {
+    const pred1 = predictedSFLoser('m101', allResults?.['m101'], userBracketPicks)
+    const pred2 = predictedSFLoser('m102', allResults?.['m102'], userBracketPicks)
+    if (!pred1 || !pred2) return 'no-pick'
+    const matchupCorrect =
+      (pred1 === actualHome && pred2 === actualAway) ||
+      (pred1 === actualAway && pred2 === actualHome)
+    return matchupCorrect ? 'correct' : 'eliminated'
+  }
 
   if (!advancePick) return 'no-pick'
 
@@ -108,7 +131,6 @@ function getMatchupStatus(match, result, userBracketPicks, parentsMap) {
 
   const p = parentsMap[match.id]
   if (!p || p.hasLose) {
-    // 3rd-place or unknown structure → only check advance pick
     return inMatch ? 'advance-only' : 'eliminated'
   }
 
@@ -507,7 +529,7 @@ export default function AllPicks() {
       const isKo = m && m.round !== 'Group'
       const isR32 = isKo && typeof m?.home === 'string' && typeof m?.away === 'string'
       if (isKo && !isR32) {
-        const mStatus = getMatchupStatus(m, results[matchId], u.bracket_picks || {}, parentsMap)
+        const mStatus = getMatchupStatus(m, results[matchId], u.bracket_picks || {}, parentsMap, results)
         if (mStatus !== 'correct') continue
       }
       bonus += scoreMatchClient(pick, s.home_score, s.away_score)
@@ -617,21 +639,35 @@ export default function AllPicks() {
                             </span>
                           )}
                         </div>
-                        {/* ── 3rd-place banner: score bonus always applies ── */}
-                        {isKo && m.round === 'Third' && !resultIn && (
-                          <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-900/20 border border-amber-700/30 text-[11px]">
-                            <span className="text-amber-300 flex items-center gap-1">
-                              <span>⚡</span>
-                              <span className="font-medium">Score bonus applies to all — 3rd place always counts</span>
-                            </span>
-                            <span className="text-amber-400 font-bold shrink-0">Max +10 pts</span>
-                          </div>
-                        )}
+                        {/* ── 3rd-place banner: matchup-gated score bonus ── */}
+                        {isKo && m.round === 'Third' && !resultIn && result?.home_team && result?.away_team && (() => {
+                          const statuses = users.map(u =>
+                            getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results)
+                          )
+                          const nCorrect = statuses.filter(s => s === 'correct').length
+                          const nTotal   = users.length
+                          if (nCorrect === nTotal) return null
+                          if (nCorrect === 0) return (
+                            <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-amber-900/20 border border-amber-700/30 text-[11px]">
+                              <span className="text-amber-300 flex items-center gap-1">
+                                <span>⚡</span>
+                                <span className="font-medium">Score bonus locked — no one predicted this 3rd-place matchup</span>
+                              </span>
+                              <span className="text-amber-400 font-bold shrink-0">Max +10 pts</span>
+                            </div>
+                          )
+                          return (
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-800/50 border border-gray-700/30 text-[11px] text-gray-400">
+                              <span>🎯</span>
+                              <span>{nCorrect}/{nTotal} predicted this 3rd-place matchup · score bonus available</span>
+                            </div>
+                          )
+                        })()}
 
                         {/* ── Matchup insight banner (R16+ only, before kick-off) ── */}
                         {isKo && m.round !== 'R32' && m.round !== 'Third' && !resultIn && (() => {
                           const statuses = users.map(u =>
-                            getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
+                            getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results)
                           )
                           const nCorrect  = statuses.filter(s => s === 'correct').length
                           const nPartial  = statuses.filter(s => s === 'advance-only').length
@@ -688,14 +724,13 @@ export default function AllPicks() {
                               : calcPts(pick, result)
 
                             // Matchup status — computed before livePts so we can gate live scoring.
-                            // R32 and Third Place are always-correct; skip status gating for those.
-                            const mStatus = (isKo && m.round !== 'R32' && m.round !== 'Third' && !resultIn && !effectiveWinner)
-                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap)
+                            // R32 is always-correct; Third Place is matchup-gated like R16+.
+                            const mStatus = (isKo && m.round !== 'R32' && !resultIn && !effectiveWinner)
+                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results)
                               : null
 
                             // Live score bonus only applies when matchup is correct.
-                            // Third Place is always-correct (like R32) — never suppress its live score.
-                            const matchupOkForScore = !isKo || m.round === 'R32' || m.round === 'Third' || mStatus === 'correct' || mStatus === null
+                            const matchupOkForScore = !isKo || m.round === 'R32' || mStatus === 'correct' || mStatus === null
                             const livePts = !resultIn && live?.home_score != null && hasPick && matchupOkForScore
                               ? scoreMatchClient(pick, live.home_score, live.away_score)
                               : null
