@@ -8,9 +8,10 @@
  *
  * R32: the two teams are known before picking, so the matchup is always
  *      "correct" — the scoreline bonus applies as long as a score pick exists.
- * R16→Final: the matchup is the participant's own bracket prediction (the
- *      winners they sent forward). The scoreline bonus counts only if BOTH
- *      predicted teams match the two teams that actually played.
+ * R16→Final (including Third Place): the matchup is the participant's own bracket
+ *      prediction. For Third Place the predicted matchup is the two SF losers the
+ *      participant sent forward. The scoreline bonus counts only if BOTH predicted
+ *      teams match the two teams that actually played.
  *
  * Advancement comes from the participant's bracket (`brackets.picks.knockout`);
  * the scoreline comes from their score picks (`score_picks`). The two are scored
@@ -70,9 +71,9 @@ export function scoreKnockoutForUser(bracket, scorePicksByMatch, actuals) {
     const act = actuals[m.id]
     if (!act || !act.winner) continue   // match not decided yet → no points
 
-    // ── Advance points (not awarded for Third Place) ─────────────────────────
+    // ── Advance points ───────────────────────────────────────────────────────
     const predWinner = knockoutPicks[m.id] || null
-    const advancePts = m.round !== 'Third' && predWinner && predWinner === act.winner ? 10 : 0
+    const advancePts = predWinner && predWinner === act.winner ? 10 : 0
 
     // ── Scoreline bonus ───────────────────────────────────────────────────────
     // R32: teams come from group stage → matchup always correct.

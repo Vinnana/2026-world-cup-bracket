@@ -115,14 +115,21 @@ function getMatchupStatus(match, result, userBracketPicks, parentsMap, allResult
   if (isR32) return 'r32'  // R32 matchup is always correct (teams come from group stage)
 
   // Third Place: advance pts for correct winner + score bonus gated by predicted SF losers.
+  // Same structure as R16+: 'correct' → full 20 pts; 'advance-only' → +10 max; 'eliminated' → 0.
   if (match.round === 'Third') {
+    const tp3Advance = userBracketPicks?.[match.id]
+    const inMatch3 = !!tp3Advance && (tp3Advance === actualHome || tp3Advance === actualAway)
     const pred1 = predictedSFLoser('m101', allResults?.['m101'], userBracketPicks)
     const pred2 = predictedSFLoser('m102', allResults?.['m102'], userBracketPicks)
-    if (!pred1 || !pred2) return 'no-pick'
+    if (!pred1 || !pred2) {
+      if (!tp3Advance) return 'no-pick'
+      return inMatch3 ? 'advance-only' : 'eliminated'
+    }
     const matchupCorrect =
       (pred1 === actualHome && pred2 === actualAway) ||
       (pred1 === actualAway && pred2 === actualHome)
-    return matchupCorrect ? 'correct' : 'eliminated'
+    if (matchupCorrect) return 'correct'
+    return inMatch3 ? 'advance-only' : 'eliminated'
   }
 
   if (!advancePick) return 'no-pick'
