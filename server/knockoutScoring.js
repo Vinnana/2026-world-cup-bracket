@@ -77,14 +77,28 @@ export function scoreKnockoutForUser(bracket, scorePicksByMatch, actuals) {
 
     // ── Scoreline bonus ───────────────────────────────────────────────────────
     // R32: teams come from group stage → matchup always correct.
-    // R16 / QF / SF / Third Place / Final: matchup-gated; Third Place uses {lose}
-    // resolution so the predicted matchup is the participant's predicted SF losers.
+    // R16 / QF / SF / Final: matchup-gated via predicted parent-match winners.
+    // Third Place: score bonus requires (1) advance pick is one of the actual teams
+    //   AND (2) predicted SF losers match the actual 3rd-place teams.
+    //   If the advance pick is a team not in the match (e.g. Brazil when it's France vs England),
+    //   the score bonus is 0 regardless of SF predictions.
     let scorePts = 0
     const pick = scorePicksByMatch[m.id]
     const resultKnown = act.home_goals != null && act.away_goals != null
     if (pick && pick.home_goals != null && pick.away_goals != null && resultKnown) {
       if (m.round === 'R32') {
         scorePts = scoreMatch(pick, act) || 0
+      } else if (m.round === 'Third') {
+        // Gate 1: advance pick must be in the actual match
+        const tp3pick = predWinner
+        if (tp3pick && (tp3pick === act.home_team || tp3pick === act.away_team)) {
+          // Gate 2: predicted SF losers (predHome/predAway) must match actual teams
+          if (predHome === act.home_team && predAway === act.away_team) {
+            scorePts = scoreMatch(pick, act) || 0
+          } else if (predHome === act.away_team && predAway === act.home_team) {
+            scorePts = scoreMatch({ home_goals: pick.away_goals, away_goals: pick.home_goals }, act) || 0
+          }
+        }
       } else {
         if (predHome === act.home_team && predAway === act.away_team) {
           scorePts = scoreMatch(pick, act) || 0
