@@ -415,6 +415,32 @@ router.get('/matches', optionalAuth, (req, res) => {
     }
   }
 
+  // Derive Third Place (m103) teams from SF results if not already set.
+  // Winner: from knockout_results table (handles penalty draws), else from goals.
+  if (!teamOverrides['m103']?.home || !teamOverrides['m103']?.away) {
+    const koResults = db.getKnockoutResults()
+    const koWinnerById = {}
+    for (const r of koResults) { if (r.winner) koWinnerById[r.match_id] = r.winner }
+
+    function sfLoser(matchId) {
+      const ov = teamOverrides[matchId]
+      if (!ov?.home || !ov?.away) return null
+      const rm = resultMap[matchId]
+      let winner = koWinnerById[matchId]
+      if (!winner && rm?.home_goals != null && rm?.away_goals != null) {
+        if (rm.home_goals > rm.away_goals) winner = ov.home
+        else if (rm.away_goals > rm.home_goals) winner = ov.away
+      }
+      if (!winner) return null
+      return winner === ov.home ? ov.away : ov.home
+    }
+
+    const tp = teamOverrides['m103'] ? { ...teamOverrides['m103'] } : {}
+    if (!tp.home) { const l = sfLoser('m101'); if (l) tp.home = l }
+    if (!tp.away) { const l = sfLoser('m102'); if (l) tp.away = l }
+    if (tp.home || tp.away) teamOverrides['m103'] = tp
+  }
+
   res.json({
     matches: ALL_MATCHES,
     results: resultMap,
@@ -545,6 +571,26 @@ router.get('/all', optionalAuth, (req, res) => {
         resultMap[r.match_id] = { ...resultMap[r.match_id], winner: r.winner }
       } else {
         resultMap[r.match_id] = { home_team: r.home_team ?? null, away_team: r.away_team ?? null, home_goals: null, away_goals: null, winner: r.winner }
+      }
+    }
+  }
+
+  // Derive Third Place (m103) teams from SF results if not already set.
+  // resultMap entries here have home_team, away_team, winner from the enrichment above.
+  if (!resultMap['m103']?.home_team || !resultMap['m103']?.away_team) {
+    function sfLoserAll(matchId) {
+      const r = resultMap[matchId]
+      if (!r?.home_team || !r?.away_team || !r?.winner) return null
+      return r.winner === r.home_team ? r.away_team : r.home_team
+    }
+    const existing = resultMap['m103'] || {}
+    const homeLoser = !existing.home_team ? sfLoserAll('m101') : null
+    const awayLoser = !existing.away_team ? sfLoserAll('m102') : null
+    if (homeLoser || awayLoser) {
+      resultMap['m103'] = {
+        ...existing,
+        home_team: existing.home_team || homeLoser,
+        away_team: existing.away_team || awayLoser,
       }
     }
   }

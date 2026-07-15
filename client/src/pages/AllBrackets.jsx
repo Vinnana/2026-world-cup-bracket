@@ -73,7 +73,8 @@ export default function AllBrackets() {
     return enriched
   }, [matchResults, results])
 
-  // Build resolvedTeams: ESPN actuals first, then cascade through user's bracket picks
+  // Build resolvedTeams: ESPN actuals first, then cascade through bracket picks →
+  // score-implied winner → actual result winner (so users with only score picks show teams).
   const resolvedTeams = useMemo(() => {
     if (!viewing || !knockout.length) return {}
     const knockoutPicks = viewing.picks?.knockout || {}
@@ -85,12 +86,44 @@ export default function AllBrackets() {
         const gpg = groupPicksMap[side[1]]
         return gpg ? (side[0] === '1' ? gpg.first : gpg.second) : null
       }
-      if (side?.win)  return knockoutPicks[side.win] || null
+      if (side?.win) {
+        // 1. Bracket pick
+        if (knockoutPicks[side.win]) return knockoutPicks[side.win]
+        // 2. Score-implied winner
+        const sp = viewingScorePicks[side.win]
+        const teams = built[side.win]
+        if (sp?.home_goals != null && sp?.away_goals != null && teams?.home && teams?.away) {
+          if (sp.home_goals > sp.away_goals) return teams.home
+          if (sp.away_goals > sp.home_goals) return teams.away
+        }
+        // 3. Actual result winner
+        return enrichedMatchResults[side.win]?.winner || null
+      }
       if (side?.lose) {
-        const teams  = built[side.lose]
+        const builtTeams = built[side.lose]
+        const actualResult = enrichedMatchResults[side.lose]
+        const teams = builtTeams?.home && builtTeams?.away
+          ? builtTeams
+          : (actualResult?.home_team && actualResult?.away_team
+            ? { home: actualResult.home_team, away: actualResult.away_team }
+            : null)
+        // 1. Bracket pick (winner's opponent = loser)
         const winner = knockoutPicks[side.lose]
-        if (!teams || !winner) return null
-        return teams.home === winner ? teams.away : teams.away === winner ? teams.home : null
+        if (teams && winner) {
+          return teams.home === winner ? teams.away : teams.away === winner ? teams.home : null
+        }
+        // 2. Score-implied loser
+        const sp = viewingScorePicks[side.lose]
+        if (sp?.home_goals != null && sp?.away_goals != null && teams) {
+          if (sp.home_goals > sp.away_goals) return teams.away
+          if (sp.away_goals > sp.home_goals) return teams.home
+        }
+        // 3. Actual result loser
+        if (actualResult?.winner && teams) {
+          if (actualResult.winner === teams.home) return teams.away
+          if (actualResult.winner === teams.away) return teams.home
+        }
+        return null
       }
       return null
     }
@@ -98,7 +131,7 @@ export default function AllBrackets() {
     const built = {}
     for (const m of knockout) {
       // Only use ESPN actual teams for R32 (home/away are group-slot strings like '1A').
-      // R16+ matches have {win/lose: matchId} objects — always cascade from bracket picks.
+      // R16+ matches have {win/lose: matchId} objects — cascade through fallback chain.
       const isR32 = typeof m.home === 'string' && typeof m.away === 'string'
       const actual = isR32 ? teamOverrides[m.id] : null
       if (actual?.home && actual?.away) {
@@ -108,7 +141,7 @@ export default function AllBrackets() {
       }
     }
     return built
-  }, [viewing, knockout, results.groups, teamOverrides])
+  }, [viewing, knockout, results.groups, teamOverrides, viewingScorePicks, enrichedMatchResults])
 
   if (loading) return <div className="p-8 text-gray-400 text-center">Loading…</div>
 

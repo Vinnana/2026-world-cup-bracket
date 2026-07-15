@@ -494,8 +494,8 @@ export default function MyBracket() {
   }, [matchResults, koResults])
 
   // Resolve the displayed team for each knockout slot.
-  // Actual ESPN data takes priority; falls back to bracket picks cascade.
-  // resolvedTeams is built up iteratively; pass it in so {lose:mX} can look back
+  // Actual ESPN data takes priority; falls back to bracket picks → score-implied winner
+  // → actual result winner so matches show real teams even without bracket picks.
   const resolvedTeams = {}
   function resolveSide(side) {
     if (typeof side === 'string') {
@@ -503,19 +503,51 @@ export default function MyBracket() {
       const gpg = groupPicks?.[side[1]]
       return gpg ? (side[0] === '1' ? gpg.first : gpg.second) : null
     }
-    if (side?.win)  return knockoutPicks?.[side.win] || null
+    if (side?.win) {
+      // 1. Bracket pick
+      if (knockoutPicks?.[side.win]) return knockoutPicks[side.win]
+      // 2. Score-implied winner
+      const sp = scorePicks[side.win]
+      const teams = resolvedTeams[side.win]
+      if (sp?.home_goals != null && sp?.away_goals != null && teams?.home && teams?.away) {
+        if (sp.home_goals > sp.away_goals) return teams.home
+        if (sp.away_goals > sp.home_goals) return teams.away
+      }
+      // 3. Actual result winner
+      return enrichedMatchResults[side.win]?.winner || null
+    }
     if (side?.lose) {
-      const teams  = resolvedTeams[side.lose]
+      const builtTeams = resolvedTeams[side.lose]
+      const actualResult = enrichedMatchResults[side.lose]
+      const teams = builtTeams?.home && builtTeams?.away
+        ? builtTeams
+        : (actualResult?.home_team && actualResult?.away_team
+          ? { home: actualResult.home_team, away: actualResult.away_team }
+          : null)
+      // 1. Bracket pick (winner's opponent = loser)
       const winner = knockoutPicks?.[side.lose]
-      if (!teams || !winner) return null
-      return teams.home === winner ? teams.away : teams.away === winner ? teams.home : null
+      if (teams && winner) {
+        return teams.home === winner ? teams.away : teams.away === winner ? teams.home : null
+      }
+      // 2. Score-implied loser
+      const sp = scorePicks[side.lose]
+      if (sp?.home_goals != null && sp?.away_goals != null && teams) {
+        if (sp.home_goals > sp.away_goals) return teams.away
+        if (sp.away_goals > sp.home_goals) return teams.home
+      }
+      // 3. Actual result loser
+      if (actualResult?.winner && teams) {
+        if (actualResult.winner === teams.home) return teams.away
+        if (actualResult.winner === teams.away) return teams.home
+      }
+      return null
     }
     return null
   }
 
   for (const m of knockout) {
     // Only use ESPN actual teams for R32 (home/away are group-slot strings like '1A').
-    // R16+ matches have {win/lose: matchId} objects — always cascade from bracket picks.
+    // R16+ matches have {win/lose: matchId} objects — cascade through fallback chain.
     const isR32 = typeof m.home === 'string' && typeof m.away === 'string'
     const actual = isR32 ? teamOverrides[m.id] : null
     if (actual?.home && actual?.away) {

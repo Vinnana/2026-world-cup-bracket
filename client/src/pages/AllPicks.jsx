@@ -162,7 +162,7 @@ function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, has
   const liveTotal = userData.total + liveBonus
 
   const groups = [...new Set(allMatches.filter(m => m.round === 'Group').map(m => m.group))].sort()
-  const koRounds = ['R32', 'R16', 'QF', 'SF', 'Final']
+  const koRounds = ['R32', 'R16', 'QF', 'SF', 'Third', 'Final']
 
   const displayHome = (match) =>
     typeof match.home === 'string' ? match.home : null
@@ -297,8 +297,8 @@ function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, has
           {/* Knockout picks — show scoreline pick + who they advanced */}
           {koRounds.map(round => {
             const rMatches = allMatches.filter(m => m.round === round)
-            // Only show matches where ESPN has assigned actual teams
-            const knownMatches = rMatches.filter(m => results[m.id]?.home_team)
+            // Only show matches where actual teams are known (Third Place teams derived server-side)
+            const knownMatches = rMatches.filter(m => results[m.id]?.home_team || results[m.id]?.away_team)
             if (!knownMatches.length) return null
             const hasAny = knownMatches.some(m =>
               userData.picks[m.id]?.home_goals != null || userData.bracket_picks?.[m.id]
@@ -310,7 +310,8 @@ function UserRow({ userData, allMatches, results, rank, isMe, liveBonus = 0, has
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className="text-xs font-bold text-purple-400 uppercase tracking-wide">
                     {round === 'R32' ? 'Round of 32' : round === 'R16' ? 'Round of 16' :
-                     round === 'QF' ? 'Quarter-finals' : round === 'SF' ? 'Semi-finals' : 'Final'}
+                     round === 'QF' ? 'Quarter-finals' : round === 'SF' ? 'Semi-finals' :
+                     round === 'Third' ? '3rd Place' : 'Final'}
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -465,8 +466,8 @@ export default function AllPicks() {
   const { users = [], locked, matches = [], results = {} } = data || {}
   const groupMatches = matches.filter(m => m.round === 'Group')
 
-  // Knockout: only show matches where ESPN has assigned actual teams
-  const knockoutMatches = matches.filter(m => m.round !== 'Group' && results[m.id]?.home_team)
+  // Knockout: only show matches where actual teams are known (Third Place derived server-side)
+  const knockoutMatches = matches.filter(m => m.round !== 'Group' && (results[m.id]?.home_team || results[m.id]?.away_team))
 
   const upcomingMatches  = [
     ...groupMatches.filter(m => !results[m.id] || results[m.id].home_goals == null),
