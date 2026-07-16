@@ -43,7 +43,7 @@ function ptsLabel(pts) {
 }
 
 // ── Single knockout match card ────────────────────────────────────────────────
-function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement, matchupOk = true }) {
+function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, predictedHomeTeam, predictedAwayTeam, advancePick, onPickAdvancement, matchupOk = true }) {
   const awayRef = useRef(null)
 
   const [homeVal, setHomeVal] = useState(scorePick?.home_goals ?? '')
@@ -179,7 +179,12 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
           ? <span className="text-gray-500 italic flex-1" style={{ fontSize: 10 }}>TBD</span>
           : <>
               <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(homeTeam)}</span>
-              <span className={`truncate flex-1 min-w-0 ${homeEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10 }}>{shortName(homeTeam)}</span>
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <span className={`truncate ${homeEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10, lineHeight: '13px' }}>{shortName(homeTeam)}</span>
+                {predictedHomeTeam && predictedHomeTeam !== homeTeam && (
+                  <span className="truncate text-gray-500" style={{ fontSize: 7, lineHeight: '9px' }}>pred: {shortName(predictedHomeTeam)}</span>
+                )}
+              </div>
             </>
         }
         <input
@@ -199,7 +204,12 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
           ? <span className="text-gray-500 italic flex-1" style={{ fontSize: 10 }}>TBD</span>
           : <>
               <span className="flex-shrink-0" style={{ fontSize: 11 }}>{getFlag(awayTeam)}</span>
-              <span className={`truncate flex-1 min-w-0 ${awayEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10 }}>{shortName(awayTeam)}</span>
+              <div className="flex-1 min-w-0 flex flex-col justify-center">
+                <span className={`truncate ${awayEliminated ? 'line-through text-red-400/60' : 'text-gray-200'}`} style={{ fontSize: 10, lineHeight: '13px' }}>{shortName(awayTeam)}</span>
+                {predictedAwayTeam && predictedAwayTeam !== awayTeam && (
+                  <span className="truncate text-gray-500" style={{ fontSize: 7, lineHeight: '9px' }}>pred: {shortName(predictedAwayTeam)}</span>
+                )}
+              </div>
             </>
         }
         <input
@@ -355,6 +365,8 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                         onClearScore={onClearScore}
                         homeTeam={displayT.home || null}
                         awayTeam={displayT.away || null}
+                        predictedHomeTeam={teams.home || null}
+                        predictedAwayTeam={teams.away || null}
                         advancePick={knockoutPicks[id]}
                         onPickAdvancement={onPickAdvancement}
                         matchupOk={matchupOk}
@@ -391,6 +403,8 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                           onClearScore={onClearScore}
                           homeTeam={thirdDisplay.home || null}
                           awayTeam={thirdDisplay.away || null}
+                          predictedHomeTeam={thirdPredicted.home || null}
+                          predictedAwayTeam={thirdPredicted.away || null}
                           advancePick={knockoutPicks['m103']}
                           onPickAdvancement={onPickAdvancement}
                         />
