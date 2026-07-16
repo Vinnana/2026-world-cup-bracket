@@ -90,21 +90,37 @@ function buildParentsMap(knockout) {
   return map
 }
 
-// Determine what team a user predicted as the loser of a given SF match.
-// Uses the actual SF teams so we can tell which side the user's winner pick came from.
-function predictedSFLoser(sfMatchId, sfResult, userBracketPicks) {
-  if (!sfResult?.home_team || !sfResult?.away_team) return null
-  const pick = userBracketPicks?.[sfMatchId]
-  if (!pick) return null
-  if (pick === sfResult.home_team) return sfResult.away_team
-  if (pick === sfResult.away_team) return sfResult.home_team
-  // User's SF pick isn't one of the actual SF teams → bracket was disconnected from reality
+// Mirror of knockoutScoring.js resolvePredictedSide — resolves one bracket slot
+// using the user's own picks and the iteratively-built resolved teams map.
+function resolvePredSide(side, bracketPicks, resolved) {
+  if (!side || typeof side === 'string') return null
+  if (side.win) return bracketPicks[side.win] || null
+  if (side.lose) {
+    const teams = resolved?.[side.lose]
+    const winner = bracketPicks[side.lose]
+    if (!teams || !winner) return null
+    if (teams.home === winner) return teams.away
+    if (teams.away === winner) return teams.home
+    return null
+  }
   return null
 }
 
+// Build the full predicted teams map for all knockout matches from a user's bracket,
+// mirroring the iterative resolvedTeams logic in knockoutScoring.js.
+function buildUserResolvedTeams(knockoutStructure, bracketPicks) {
+  const resolved = {}
+  for (const m of knockoutStructure) {
+    const ph = resolvePredSide(m.home, bracketPicks, resolved)
+    const pa = resolvePredSide(m.away, bracketPicks, resolved)
+    if (ph || pa) resolved[m.id] = { home: ph, away: pa }
+  }
+  return resolved
+}
+
 // Returns 'correct' | 'advance-only' | 'eliminated' | 'no-pick' | 'r32' | 'unknown'
-// allResults: the full results map (needed for Third Place {lose} resolution)
-function getMatchupStatus(match, result, userBracketPicks, parentsMap, allResults) {
+// userResolvedTeams: pre-computed bracket resolution map (required for Third Place)
+function getMatchupStatus(match, result, userBracketPicks, parentsMap, allResults, userResolvedTeams) {
   const actualHome = result?.home_team
   const actualAway = result?.away_team
   if (!actualHome || !actualAway) return 'unknown'
@@ -122,9 +138,10 @@ function getMatchupStatus(match, result, userBracketPicks, parentsMap, allResult
     if (!tp3Advance) return 'no-pick'
     const inMatch3 = tp3Advance === actualHome || tp3Advance === actualAway
     if (!inMatch3) return 'eliminated'  // advance pick not in match → 0 pts
-    // Advance pick is one of the actual teams. Check SF loser predictions for score bonus.
-    const pred1 = predictedSFLoser('m101', allResults?.['m101'], userBracketPicks)
-    const pred2 = predictedSFLoser('m102', allResults?.['m102'], userBracketPicks)
+    // Use bracket-chain resolution (mirrors scoring engine) to get predicted m103 teams.
+    const predM103 = userResolvedTeams?.['m103']
+    const pred1 = predM103?.home
+    const pred2 = predM103?.away
     if (!pred1 || !pred2) return 'advance-only'
     const matchupCorrect =
       (pred1 === actualHome && pred2 === actualAway) ||
@@ -648,9 +665,10 @@ export default function AllPicks() {
                         </div>
                         {/* ── 3rd-place banner: matchup-gated score bonus ── */}
                         {isKo && m.round === 'Third' && !resultIn && result?.home_team && result?.away_team && (() => {
-                          const statuses = users.map(u =>
-                            getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results)
-                          )
+                          const statuses = users.map(u => {
+                            const userRT = buildUserResolvedTeams(knockoutStructure, u.bracket_picks || {})
+                            return getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results, userRT)
+                          })
                           const nCorrect = statuses.filter(s => s === 'correct').length
                           const nTotal   = users.length
                           if (nCorrect === nTotal) return null
@@ -732,8 +750,11 @@ export default function AllPicks() {
 
                             // Matchup status — computed before livePts so we can gate live scoring.
                             // R32 is always-correct; Third Place is matchup-gated like R16+.
+                            const userRT = (isKo && m.round === 'Third')
+                              ? buildUserResolvedTeams(knockoutStructure, u.bracket_picks || {})
+                              : null
                             const mStatus = (isKo && m.round !== 'R32' && !resultIn && !effectiveWinner)
-                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results)
+                              ? getMatchupStatus(m, result, u.bracket_picks || {}, parentsMap, results, userRT)
                               : null
 
                             // Live score bonus only applies when matchup is correct.
