@@ -150,6 +150,18 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
   const clearWinner = bothEntered && !isNaN(hg) && !isNaN(ag) && hg !== ag
     ? (hg > ag ? homeTeam : awayTeam) : null
 
+  // Validate that the stored advance pick belongs to this match's teams (actual or predicted).
+  // A stale pick (e.g. stored when different teams were expected) is silently discarded so
+  // the score-implied winner can show instead.
+  const effectiveAdvancePick = (() => {
+    if (!advancePick) return null
+    if (!homeTeam || !awayTeam) return advancePick
+    if (advancePick === homeTeam || advancePick === awayTeam) return advancePick
+    if (predictedHomeTeam && advancePick === predictedHomeTeam) return advancePick
+    if (predictedAwayTeam && advancePick === predictedAwayTeam) return advancePick
+    return null
+  })()
+
   const inputCls = `w-7 h-6 text-center text-xs font-bold rounded border flex-shrink-0 transition-colors ${
     locked
       ? 'bg-gray-800 border-gray-700 text-gray-300 cursor-not-allowed'
@@ -227,16 +239,16 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
       {/* Footer: advance pick (always shown) + result score / ET-Pens picker */}
       <div className="flex items-center px-1.5 flex-1 min-h-0 gap-1 overflow-hidden">
         {(resultExists || actualWinner) ? (
-          // Match decided — advance pick with correctness color + score if available
+          // Match decided — show advance pick (validated) or score-implied winner, + actual score
           <div className="flex items-center justify-between w-full gap-1 min-w-0">
-            {advancePick ? (
+            {(effectiveAdvancePick || clearWinner) ? (
               <span
                 className={`font-medium truncate ${
-                  actualWinner === advancePick ? 'text-green-400' : 'text-red-400/70 line-through'
+                  actualWinner === (effectiveAdvancePick || clearWinner) ? 'text-green-400' : 'text-red-400/70 line-through'
                 }`}
                 style={{ fontSize: 9 }}
               >
-                →{shortName(advancePick)}
+                →{shortName(effectiveAdvancePick || clearWinner)}
               </span>
             ) : (
               <span className="text-gray-500" style={{ fontSize: 9 }}>—</span>
@@ -256,7 +268,7 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
                 key={t}
                 onClick={() => !locked && onPickAdvancement(match.id, t)}
                 className={`flex-1 rounded truncate transition-colors min-w-0 cursor-pointer ${
-                  advancePick === t
+                  effectiveAdvancePick === t
                     ? 'bg-fifa-gold text-gray-950 font-bold'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
@@ -266,10 +278,10 @@ function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, h
               </button>
             ))}
           </div>
-        ) : advancePick ? (
+        ) : effectiveAdvancePick ? (
           // Advance pick set, match not decided yet — show it in gold
           <span className="text-fifa-gold font-medium truncate" style={{ fontSize: 9 }}>
-            →{shortName(advancePick)}
+            →{shortName(effectiveAdvancePick)}
           </span>
         ) : clearWinner ? (
           // Score implies a winner, no explicit bracket advance pick
@@ -331,10 +343,16 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                 const top     = bCardTop(roundIdx, matchIdx)
                 const teams   = resolvedTeams[id] || {}   // bracket prediction — used for matchupOk
                 const mr      = matchResults[id]
-                // Show actual teams once a match has been played; fall back to bracket picks.
-                const displayT = (mr?.home_team && mr?.away_team)
-                  ? { home: mr.home_team, away: mr.away_team }
-                  : teams
+                // Display actual teams once known; for the Final fall back to SF winners if ESPN
+                // hasn't populated home_team/away_team on m104 yet.
+                const displayT = (() => {
+                  if (mr?.home_team && mr?.away_team) return { home: mr.home_team, away: mr.away_team }
+                  if (id === 'm104') {
+                    const sf1 = matchResults['m101'], sf2 = matchResults['m102']
+                    if (sf1?.winner && sf2?.winner) return { home: sf1.winner, away: sf2.winner }
+                  }
+                  return teams
+                })()
                 const isFinal = roundIdx === BRACKET_ORDER.length - 1
 
                 // Matchup gate uses bracket-predicted teams (resolvedTeams), not actual.
@@ -381,9 +399,17 @@ function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchR
                 const thirdTop  = finalCardTop - CARD_H - 56
                 const thirdPredicted = resolvedTeams['m103'] || {}
                 const thirdMr = matchResults['m103']
-                const thirdDisplay = (thirdMr?.home_team && thirdMr?.away_team)
-                  ? { home: thirdMr.home_team, away: thirdMr.away_team }
-                  : thirdPredicted
+                // Infer actual 3rd place teams from SF losers when ESPN hasn't populated m103 directly.
+                const thirdDisplay = (() => {
+                  if (thirdMr?.home_team && thirdMr?.away_team) return { home: thirdMr.home_team, away: thirdMr.away_team }
+                  const sf1 = matchResults['m101'], sf2 = matchResults['m102']
+                  if (sf1?.winner && sf1?.home_team && sf1?.away_team && sf2?.winner && sf2?.home_team && sf2?.away_team) {
+                    const l1 = sf1.winner === sf1.home_team ? sf1.away_team : sf1.home_team
+                    const l2 = sf2.winner === sf2.home_team ? sf2.away_team : sf2.home_team
+                    return { home: l1, away: l2 }
+                  }
+                  return thirdPredicted
+                })()
                 return (
                   <>
                     {/* 3rd Place label */}
