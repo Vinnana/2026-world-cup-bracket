@@ -42,7 +42,7 @@ export function ptsLabel(pts) {
 }
 
 // ── Single knockout match card ────────────────────────────────────────────────
-export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement, eliminatedTeams, matchupOk = true }) {
+export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearScore, homeTeam, awayTeam, advancePick, onPickAdvancement, matchupOk = true }) {
   const awayRef = useRef(null)
 
   const [homeVal, setHomeVal] = useState(scorePick?.home_goals ?? '')
@@ -65,8 +65,15 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
 
   const resultExists = result?.home_goals != null
 
-  const homeEliminated = !!homeTeam && (eliminatedTeams?.has(homeTeam) ?? false)
-  const awayEliminated = !!awayTeam && (eliminatedTeams?.has(awayTeam) ?? false)
+  // A team is eliminated in THIS card only if this specific match has a decided result
+  // and the predicted team was one of the actual teams that played and they lost.
+  // Using a global "eliminated" set caused earlier-round losers to show strikethrough
+  // in all subsequent cards where they were predicted — we only want it at the loss point.
+  const actualWinner = result?.winner || null
+  const homeIsActualTeam = !!homeTeam && (homeTeam === result?.home_team || homeTeam === result?.away_team)
+  const awayIsActualTeam = !!awayTeam && (awayTeam === result?.home_team || awayTeam === result?.away_team)
+  const homeEliminated = !!actualWinner && homeIsActualTeam && homeTeam !== actualWinner
+  const awayEliminated = !!actualWinner && awayIsActualTeam && awayTeam !== actualWinner
 
   function calcPts() {
     if (!resultExists || homeVal === '' || awayVal === '') return null
@@ -204,35 +211,58 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
       {/* Divider */}
       <div className="bg-gray-700/30 flex-shrink-0 mx-1.5" style={{ height: 1 }} />
 
-      {/* Footer: advances indicator / draw picker / result */}
-      <div className="flex items-center px-1.5 flex-1 min-h-0">
-        {resultExists ? (
-          <span className="text-gray-300 tabular-nums mx-auto" style={{ fontSize: 9 }}>
-            Result: {result.home_goals}–{result.away_goals}
-          </span>
-        ) : clearWinner ? (
-          <span className="text-fifa-gold font-medium truncate" style={{ fontSize: 9 }}>
-            → {shortName(clearWinner)}
-          </span>
-        ) : isDraw && !isUnknown ? (
+      {/* Footer: advance pick (always shown) + result score / ET-Pens picker */}
+      <div className="flex items-center px-1.5 flex-1 min-h-0 gap-1 overflow-hidden">
+        {(resultExists || actualWinner) ? (
+          // Match decided — show advance pick with correctness color + score if available
+          <div className="flex items-center justify-between w-full gap-1 min-w-0">
+            {advancePick ? (
+              <span
+                className={`font-medium truncate ${
+                  actualWinner === advancePick ? 'text-green-400' : 'text-red-400/70 line-through'
+                }`}
+                style={{ fontSize: 9 }}
+              >
+                →{shortName(advancePick)}
+              </span>
+            ) : (
+              <span className="text-gray-500" style={{ fontSize: 9 }}>—</span>
+            )}
+            {resultExists && (
+              <span className="text-gray-400 tabular-nums shrink-0" style={{ fontSize: 9 }}>
+                {result.home_goals}–{result.away_goals}
+              </span>
+            )}
+          </div>
+        ) : isDraw && !isUnknown && !locked ? (
+          // Score implies draw, editable — ET/Pens picker to set advance pick
           <div className="flex items-center gap-0.5 w-full overflow-hidden">
-            <span className="text-gray-500 flex-shrink-0" style={{ fontSize: 8 }}>ET/Pens:</span>
+            <span className="text-gray-500 flex-shrink-0" style={{ fontSize: 8 }}>→</span>
             {[homeTeam, awayTeam].map(t => (
               <button
                 key={t}
-                disabled={locked}
-                onClick={() => !locked && onPickAdvancement?.(match.id, t)}
-                className={`flex-1 rounded truncate transition-colors min-w-0 ${
+                onClick={() => onPickAdvancement?.(match.id, t)}
+                className={`flex-1 rounded truncate transition-colors min-w-0 cursor-pointer ${
                   advancePick === t
                     ? 'bg-fifa-gold text-gray-950 font-bold'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                } ${locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                }`}
                 style={{ fontSize: 8, lineHeight: '16px', padding: '0 2px' }}
               >
                 {shortName(t)}
               </button>
             ))}
           </div>
+        ) : advancePick ? (
+          // Advance pick set, match not decided yet — show it in gold
+          <span className="text-fifa-gold font-medium truncate" style={{ fontSize: 9 }}>
+            →{shortName(advancePick)}
+          </span>
+        ) : clearWinner ? (
+          // Score implies a winner, no explicit bracket advance pick
+          <span className="text-fifa-gold font-medium truncate" style={{ fontSize: 9 }}>
+            → {shortName(clearWinner)}
+          </span>
         ) : (
           <span className="text-gray-700 mx-auto" style={{ fontSize: 8 }}>
             {isUnknown ? '' : 'enter score'}
@@ -247,15 +277,6 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
 export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks, matchResults, locked, onSaveScore, onClearScore, onPickAdvancement, resolvedTeams }) {
   const matchById = {}
   for (const m of knockout) matchById[m.id] = m
-
-  // Teams that lost any completed knockout match — used for bracket-wide strikethrough
-  const eliminatedTeams = new Set()
-  for (const r of Object.values(matchResults)) {
-    if (r.winner && r.home_team && r.away_team) {
-      if (r.winner !== r.home_team) eliminatedTeams.add(r.home_team)
-      if (r.winner !== r.away_team) eliminatedTeams.add(r.away_team)
-    }
-  }
 
   const thirdPlaceMatch = matchById['m103']
   const roundKeys = ['R32', 'R16', 'QF', 'SF', 'Final']
@@ -327,7 +348,6 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                         awayTeam={teams.away || null}
                         advancePick={knockoutPicks[id]}
                         onPickAdvancement={onPickAdvancement}
-                        eliminatedTeams={eliminatedTeams}
                         matchupOk={matchupOk}
                       />
                     </div>
@@ -358,7 +378,6 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                           awayTeam={thirdTeams.away || null}
                           advancePick={knockoutPicks['m103']}
                           onPickAdvancement={onPickAdvancement}
-                          eliminatedTeams={new Set()}
                         />
                       </div>
                     </div>
