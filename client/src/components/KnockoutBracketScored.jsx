@@ -316,14 +316,20 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                 const m = matchById[id]
                 if (!m) return null
                 const top     = bCardTop(roundIdx, matchIdx)
-                const teams   = resolvedTeams[id] || {}
+                const teams   = resolvedTeams[id] || {}   // bracket prediction — used for matchupOk
+                const mr      = matchResults[id]
+                // Display actual teams once a match has been played; bracket picks for upcoming.
+                const displayT = (mr?.home_team && mr?.away_team)
+                  ? { home: mr.home_team, away: mr.away_team }
+                  : teams
                 const isFinal = roundIdx === BRACKET_ORDER.length - 1
 
-                // Matchup gate: R32/Third always OK; R16+ requires predicted == actual teams
+                // Matchup gate: R32/Third always OK; R16+ requires predicted == actual teams.
+                // Always computed from bracket-predicted teams (resolvedTeams), not displayT.
                 const isR32orThird = m.round === 'R32' || m.round === 'Third'
                 let matchupOk = true
                 if (!isR32orThird) {
-                  const actual = matchResults[id]
+                  const actual = mr
                   if (!actual?.home_team || !actual?.away_team || !teams.home || !teams.away) {
                     matchupOk = false
                   } else {
@@ -340,12 +346,12 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                       <KoCard
                         match={m}
                         scorePick={scorePicks[id]}
-                        result={matchResults[id]}
+                        result={mr}
                         locked={locked}
                         onSaveScore={onSaveScore}
                         onClearScore={onClearScore}
-                        homeTeam={teams.home || null}
-                        awayTeam={teams.away || null}
+                        homeTeam={displayT.home || null}
+                        awayTeam={displayT.away || null}
                         advancePick={knockoutPicks[id]}
                         onPickAdvancement={onPickAdvancement}
                         matchupOk={matchupOk}
@@ -358,7 +364,11 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
               {/* 3rd Place match + Final label — Final column only */}
               {roundIdx === BRACKET_ORDER.length - 1 && thirdPlaceMatch && (() => {
                 const thirdTop  = finalCardTop - CARD_H - 56
-                const thirdTeams = resolvedTeams['m103'] || {}
+                const thirdPredicted = resolvedTeams['m103'] || {}
+                const thirdMr = matchResults['m103']
+                const thirdDisplay = (thirdMr?.home_team && thirdMr?.away_team)
+                  ? { home: thirdMr.home_team, away: thirdMr.away_team }
+                  : thirdPredicted
                 return (
                   <>
                     <div className="absolute flex items-center gap-1 justify-center"
@@ -370,12 +380,12 @@ export function KnockoutBracketWithScores({ knockout, scorePicks, knockoutPicks,
                         <KoCard
                           match={thirdPlaceMatch}
                           scorePick={scorePicks['m103']}
-                          result={matchResults['m103']}
+                          result={thirdMr}
                           locked={locked}
                           onSaveScore={onSaveScore}
                           onClearScore={onClearScore}
-                          homeTeam={thirdTeams.home || null}
-                          awayTeam={thirdTeams.away || null}
+                          homeTeam={thirdDisplay.home || null}
+                          awayTeam={thirdDisplay.away || null}
                           advancePick={knockoutPicks['m103']}
                           onPickAdvancement={onPickAdvancement}
                         />
