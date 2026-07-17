@@ -144,15 +144,33 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
   const bothEntered = homeVal !== '' && awayVal !== ''
   const hg = parseInt(homeVal), ag = parseInt(awayVal)
   const isDraw      = bothEntered && !isNaN(hg) && !isNaN(ag) && hg === ag
-  const clearWinner = bothEntered && !isNaN(hg) && !isNaN(ag) && hg !== ag
-    ? (hg > ag ? homeTeam : awayTeam) : null
 
-  // Validate that the stored advance pick belongs to this match's teams (actual or predicted).
-  // A stale pick (e.g. stored when different teams were expected) is silently discarded so
-  // the score-implied winner can show instead.
+  // True when the actual teams shown differ from what the participant predicted.
+  // Scores and picks were entered for the predicted matchup, so we must use the
+  // predicted teams — not the inferred actual ones — when deriving the implied winner.
+  const matchupMismatch = !!(homeTeam && awayTeam) && (
+    (predictedHomeTeam && predictedHomeTeam !== homeTeam) ||
+    (predictedAwayTeam && predictedAwayTeam !== awayTeam)
+  )
+
+  // Score-implied winner: use predicted home/away when matchup differs so a 2–1
+  // entered for Spain vs Brazil reads as "Spain wins", not "France wins".
+  const effectiveClearWinner = bothEntered && !isNaN(hg) && !isNaN(ag) && hg !== ag
+    ? (hg > ag
+        ? (matchupMismatch ? (predictedHomeTeam || homeTeam) : homeTeam)
+        : (matchupMismatch ? (predictedAwayTeam || awayTeam) : awayTeam))
+    : null
+
+  // Validate advance pick: when matchup differs, only accept picks from the predicted
+  // teams (the participant made their pick in the context of their predicted matchup).
   const effectiveAdvancePick = (() => {
     if (!advancePick) return null
     if (!homeTeam || !awayTeam) return advancePick
+    if (matchupMismatch) {
+      if (predictedHomeTeam && advancePick === predictedHomeTeam) return advancePick
+      if (predictedAwayTeam && advancePick === predictedAwayTeam) return advancePick
+      return null
+    }
     if (advancePick === homeTeam || advancePick === awayTeam) return advancePick
     if (predictedHomeTeam && advancePick === predictedHomeTeam) return advancePick
     if (predictedAwayTeam && advancePick === predictedAwayTeam) return advancePick
@@ -238,14 +256,14 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
         {(resultExists || actualWinner) ? (
           // Match decided — show advance pick (validated) or score-implied winner, + actual score
           <div className="flex items-center justify-between w-full gap-1 min-w-0">
-            {(effectiveAdvancePick || clearWinner) ? (
+            {(effectiveAdvancePick || effectiveClearWinner) ? (
               <span
                 className={`font-medium truncate ${
-                  actualWinner === (effectiveAdvancePick || clearWinner) ? 'text-green-400' : 'text-red-400/70 line-through'
+                  actualWinner === (effectiveAdvancePick || effectiveClearWinner) ? 'text-green-400' : 'text-red-400/70 line-through'
                 }`}
                 style={{ fontSize: 9 }}
               >
-                →{shortName(effectiveAdvancePick || clearWinner)}
+                →{shortName(effectiveAdvancePick || effectiveClearWinner)}
               </span>
             ) : (
               <span className="text-gray-500" style={{ fontSize: 9 }}>—</span>
@@ -257,10 +275,13 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
             )}
           </div>
         ) : isDraw && !isUnknown && !locked ? (
-          // Score implies draw, editable — ET/Pens picker to set advance pick
+          // Score implies draw — ET/Pens picker; use predicted teams when matchup differs
           <div className="flex items-center gap-0.5 w-full overflow-hidden">
             <span className="text-gray-500 flex-shrink-0" style={{ fontSize: 8 }}>→</span>
-            {[homeTeam, awayTeam].map(t => (
+            {(matchupMismatch
+              ? [predictedHomeTeam || homeTeam, predictedAwayTeam || awayTeam]
+              : [homeTeam, awayTeam]
+            ).map(t => (
               <button
                 key={t}
                 onClick={() => onPickAdvancement?.(match.id, t)}
@@ -280,10 +301,10 @@ export function KoCard({ match, scorePick, result, locked, onSaveScore, onClearS
           <span className="text-fifa-gold font-medium truncate" style={{ fontSize: 9 }}>
             →{shortName(effectiveAdvancePick)}
           </span>
-        ) : clearWinner ? (
+        ) : effectiveClearWinner ? (
           // Score implies a winner, no explicit bracket advance pick
           <span className="text-fifa-gold font-medium truncate" style={{ fontSize: 9 }}>
-            → {shortName(clearWinner)}
+            → {shortName(effectiveClearWinner)}
           </span>
         ) : (
           <span className="text-gray-700 mx-auto" style={{ fontSize: 8 }}>
