@@ -82,6 +82,19 @@ function findMatchByTeams(espnHome, espnAway) {
     if (mh === na && ma === nh) return { matchId: s.match_id, swapped: true }
   }
 
+  // Special case: m103 (Third Place) teams are never written to match_scores —
+  // derive them from the SF losers (m101/m102) at lookup time.
+  const sf1 = allScores.find(s => s.match_id === 'm101')
+  const sf2 = allScores.find(s => s.match_id === 'm102')
+  if (sf1?.winner && sf1?.home_team && sf1?.away_team && sf2?.winner && sf2?.home_team && sf2?.away_team) {
+    const l1 = sf1.winner === sf1.home_team ? sf1.away_team : sf1.home_team
+    const l2 = sf2.winner === sf2.home_team ? sf2.away_team : sf2.home_team
+    const ml1 = normalizeTeam(l1)
+    const ml2 = normalizeTeam(l2)
+    if (ml1 === nh && ml2 === na) return { matchId: 'm103', swapped: false }
+    if (ml1 === na && ml2 === nh) return { matchId: 'm103', swapped: true }
+  }
+
   return null
 }
 

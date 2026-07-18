@@ -553,7 +553,10 @@ export default function AllPicks() {
       const isKo = m && m.round !== 'Group'
       const isR32 = isKo && typeof m?.home === 'string' && typeof m?.away === 'string'
       if (isKo && !isR32) {
-        const mStatus = getMatchupStatus(m, results[matchId], u.bracket_picks || {}, parentsMap, results)
+        const userRT = (m.round === 'Third')
+          ? buildUserResolvedTeams(knockoutStructure, u.bracket_picks || {})
+          : null
+        const mStatus = getMatchupStatus(m, results[matchId], u.bracket_picks || {}, parentsMap, results, userRT)
         if (mStatus !== 'correct') continue
       }
       bonus += scoreMatchClient(pick, s.home_score, s.away_score)
