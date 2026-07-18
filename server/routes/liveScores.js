@@ -84,15 +84,31 @@ function findMatchByTeams(espnHome, espnAway) {
 
   // Special case: m103 (Third Place) teams are never written to match_scores —
   // derive them from the SF losers (m101/m102) at lookup time.
+  // winner lives in wc_match_results (separate table), not in match_scores.
   const sf1 = allScores.find(s => s.match_id === 'm101')
   const sf2 = allScores.find(s => s.match_id === 'm102')
-  if (sf1?.winner && sf1?.home_team && sf1?.away_team && sf2?.winner && sf2?.home_team && sf2?.away_team) {
-    const l1 = sf1.winner === sf1.home_team ? sf1.away_team : sf1.home_team
-    const l2 = sf2.winner === sf2.home_team ? sf2.away_team : sf2.home_team
-    const ml1 = normalizeTeam(l1)
-    const ml2 = normalizeTeam(l2)
-    if (ml1 === nh && ml2 === na) return { matchId: 'm103', swapped: false }
-    if (ml1 === na && ml2 === nh) return { matchId: 'm103', swapped: true }
+  if (sf1?.home_team && sf1?.away_team && sf2?.home_team && sf2?.away_team) {
+    const koWinners = {}
+    for (const r of db.getKnockoutResults()) { if (r.winner) koWinners[r.match_id] = r.winner }
+
+    function sfLoser(sf) {
+      let w = koWinners[sf.match_id]
+      if (!w && sf.home_goals != null && sf.away_goals != null) {
+        if (sf.home_goals > sf.away_goals) w = sf.home_team
+        else if (sf.away_goals > sf.home_goals) w = sf.away_team
+      }
+      if (!w) return null
+      return w === sf.home_team ? sf.away_team : sf.home_team
+    }
+
+    const l1 = sfLoser(sf1)
+    const l2 = sfLoser(sf2)
+    if (l1 && l2) {
+      const ml1 = normalizeTeam(l1)
+      const ml2 = normalizeTeam(l2)
+      if (ml1 === nh && ml2 === na) return { matchId: 'm103', swapped: false }
+      if (ml1 === na && ml2 === nh) return { matchId: 'm103', swapped: true }
+    }
   }
 
   return null
