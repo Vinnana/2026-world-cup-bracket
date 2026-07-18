@@ -26,7 +26,7 @@ import { MATCH_DATES } from './schedule.js'
 // ─── Shared stage → round key mapping ───────────────────────────────────────
 const STAGE_TO_ROUND = {
   LAST_32: 'R32', LAST_16: 'R16',
-  QUARTER_FINALS: 'QF', SEMI_FINALS: 'SF', FINAL: 'Final',
+  QUARTER_FINALS: 'QF', SEMI_FINALS: 'SF', THIRD_PLACE: 'Third', FINAL: 'Final',
 }
 
 // ─── Team-name normalisation & alias table ───────────────────────────────────
@@ -283,6 +283,7 @@ function espnStage(ev) {
   if (txt.includes('round of 16')) return 'LAST_16'
   if (txt.includes('quarter'))     return 'QUARTER_FINALS'
   if (txt.includes('semi'))        return 'SEMI_FINALS'
+  if (txt.includes('third') || txt.includes('3rd')) return 'THIRD_PLACE'  // must precede 'final'
   if (txt.includes('final'))       return 'FINAL'
   return 'GROUP_STAGE'
 }
@@ -537,6 +538,11 @@ function resolveSide(side, groupResults, koResults) {
     return { team: gr ? (pos === '1' ? gr.first : gr.second) : null }
   }
   if (side?.win) return { team: koResults[side.win]?.winner || null }
+  if (side?.lose) {
+    const r = koResults[side.lose]
+    if (!r?.winner || !r?.home_team || !r?.away_team) return { team: null }
+    return { team: r.winner === r.home_team ? r.away_team : r.home_team }
+  }
   return { team: null }
 }
 
@@ -572,12 +578,20 @@ export async function processKnockout(db, matches, summary) {
           { first: row.home_team, second: row.away_team, third: row.winner }
     }
     const ko = {}
-    for (const row of db.getKnockoutResults()) ko[row.match_id] = { winner: row.winner }
+    for (const row of db.getKnockoutResults()) {
+      ko[row.match_id] = { winner: row.winner, home_team: row.home_team, away_team: row.away_team }
+    }
+    // Also pull home/away from match_scores for matches not yet in knockout_results
+    for (const row of db.getAllMatchScores()) {
+      if (!ko[row.match_id] && (row.home_team || row.away_team)) {
+        ko[row.match_id] = { winner: null, home_team: row.home_team, away_team: row.away_team }
+      }
+    }
     return { groupResults: gr, koResults: ko }
   }
 
   // Process round-by-round so R16+ feeders resolve from already-recorded winners.
-  for (const round of ['R32', 'R16', 'QF', 'SF', 'Final']) {
+  for (const round of ['R32', 'R16', 'QF', 'SF', 'Third', 'Final']) {
     for (const M of KNOCKOUT.filter(m => m.round === round)) {
       const { groupResults, koResults } = reread()
       const hs = resolveSide(M.home, groupResults, koResults)
