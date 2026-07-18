@@ -82,32 +82,37 @@ function findMatchByTeams(espnHome, espnAway) {
     if (mh === na && ma === nh) return { matchId: s.match_id, swapped: true }
   }
 
-  // Special case: m103 (Third Place) teams are never written to match_scores —
-  // derive them from the SF losers (m101/m102) at lookup time.
-  // winner lives in wc_match_results (separate table), not in match_scores.
+  // m103 (Third Place) teams are never in match_scores; m104 (Final) teams may
+  // also be absent if the result fetcher hasn't run since the SFs finished.
+  // Derive both from SF results: m103 = SF losers, m104 = SF winners.
+  // Winner lives in wc_match_results (separate table), not in match_scores.
   const sf1 = allScores.find(s => s.match_id === 'm101')
   const sf2 = allScores.find(s => s.match_id === 'm102')
   if (sf1?.home_team && sf1?.away_team && sf2?.home_team && sf2?.away_team) {
     const koWinners = {}
     for (const r of db.getKnockoutResults()) { if (r.winner) koWinners[r.match_id] = r.winner }
 
-    function sfLoser(sf) {
+    function sfResult(sf) {
       let w = koWinners[sf.match_id]
       if (!w && sf.home_goals != null && sf.away_goals != null) {
         if (sf.home_goals > sf.away_goals) w = sf.home_team
         else if (sf.away_goals > sf.home_goals) w = sf.away_team
       }
       if (!w) return null
-      return w === sf.home_team ? sf.away_team : sf.home_team
+      return { winner: w, loser: w === sf.home_team ? sf.away_team : sf.home_team }
     }
 
-    const l1 = sfLoser(sf1)
-    const l2 = sfLoser(sf2)
-    if (l1 && l2) {
-      const ml1 = normalizeTeam(l1)
-      const ml2 = normalizeTeam(l2)
+    const r1 = sfResult(sf1)
+    const r2 = sfResult(sf2)
+    if (r1 && r2) {
+      // m103: SF losers
+      const ml1 = normalizeTeam(r1.loser), ml2 = normalizeTeam(r2.loser)
       if (ml1 === nh && ml2 === na) return { matchId: 'm103', swapped: false }
       if (ml1 === na && ml2 === nh) return { matchId: 'm103', swapped: true }
+      // m104: SF winners
+      const mw1 = normalizeTeam(r1.winner), mw2 = normalizeTeam(r2.winner)
+      if (mw1 === nh && mw2 === na) return { matchId: 'm104', swapped: false }
+      if (mw1 === na && mw2 === nh) return { matchId: 'm104', swapped: true }
     }
   }
 
